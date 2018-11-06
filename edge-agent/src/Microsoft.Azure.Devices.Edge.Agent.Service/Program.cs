@@ -10,8 +10,10 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
     using Autofac;
     using global::Docker.DotNet.Models;
     using Microsoft.Azure.Devices.Edge.Agent.Core;
+    using Microsoft.Azure.Devices.Edge.Agent.Kubernetes;
     using Microsoft.Azure.Devices.Edge.Agent.Service.Modules;
     using Microsoft.Azure.Devices.Edge.Util;
+    using Microsoft.Azure_Devices.Edge.Agent.Kubernetes;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using ILogger = Extensions.Logging.ILogger;
@@ -120,6 +122,18 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
                         builder.RegisterModule(new EdgeletModule(iothubHostname, edgeDeviceHostName, deviceId, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
                         break;
 
+                    case Constants.KubernetesMode:
+                        managementUri = configuration.GetValue<string>(Constants.EdgeletManagementUriVariableName);
+                        workloadUri = configuration.GetValue<string>(Constants.EdgeletWorkloadUriVariableName);
+                        iothubHostname = configuration.GetValue<string>(Constants.IotHubHostnameVariableName);
+                        deviceId = configuration.GetValue<string>(Constants.DeviceIdVariableName);
+                        moduleId = configuration.GetValue(Constants.ModuleIdVariableName, Constants.EdgeAgentModuleIdentityName);
+                        moduleGenerationId = configuration.GetValue<string>(Constants.EdgeletModuleGenerationIdVariableName);
+                        
+                        builder.RegisterModule(new AgentModule(maxRestartCount, intensiveCareTime, coolOffTimeUnitInSeconds, usePersistentStorage, storagePath, Option.Some(new Uri(workloadUri)), moduleId, Option.Some(moduleGenerationId)));
+                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
+                        break;
+
                     default:
                         throw new InvalidOperationException($"Mode '{mode}' not supported.");
                 }
@@ -144,6 +158,12 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
             {
                 logger.LogCritical(AgentEventIds.Agent, ex, "Fatal error building application.");
                 return 1;
+            }
+
+            IRuntimeInfoProvider edgeOperator = await container.Resolve<Task<IRuntimeInfoProvider>>();
+            if (edgeOperator is IKubernetesOperator kubernetesOperator)
+            {
+                kubernetesOperator.Start();
             }
 
             (CancellationTokenSource cts, ManualResetEventSlim completed, Option<object> handler)

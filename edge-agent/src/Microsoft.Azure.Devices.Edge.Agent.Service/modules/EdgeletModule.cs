@@ -16,6 +16,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
     using Microsoft.Azure.Devices.Edge.Util;
     using Microsoft.Extensions.Logging;
     using ModuleIdentityLifecycleManager = Microsoft.Azure.Devices.Edge.Agent.Edgelet.ModuleIdentityLifecycleManager;
+    using Microsoft.Azure.Devices.Edge.Agent.Core.Planners;
+    using Microsoft.Azure.Devices.Edge.Agent.Core.Serde;
 
     /// <summary>
     /// Initializes Edgelet specific types.
@@ -33,6 +35,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
         readonly Option<UpstreamProtocol> upstreamProtocol;
         readonly Option<string> productInfo;
 
+
         public EdgeletModule(string iotHubHostname, string gatewayHostName, string deviceId, Uri managementUri,
             Uri workloadUri, IEnumerable<AuthConfig> dockerAuthConfig, Option<UpstreamProtocol> upstreamProtocol, Option<string> productInfo)
         {
@@ -44,6 +47,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             this.dockerAuthConfig = Preconditions.CheckNotNull(dockerAuthConfig, nameof(dockerAuthConfig));
             this.upstreamProtocol = Preconditions.CheckNotNull(upstreamProtocol, nameof(upstreamProtocol));
             this.productInfo = productInfo;
+
         }
 
         protected override void Load(ContainerBuilder builder)
@@ -64,6 +68,17 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             builder.Register(c => new ModuleIdentityLifecycleManager(c.Resolve<IIdentityManager>(), identityBuilder, this.workloadUri))
                 .As<IModuleIdentityLifecycleManager>()
                 .SingleInstance();
+
+            // IPlanner
+            builder.Register(async c => new HealthRestartPlanner(
+                                await c.Resolve<Task<ICommandFactory>>(),
+                                c.Resolve<IEntityStore<string, ModuleState>>(),
+                                TimeSpan.FromSeconds(10),                           //TODO: get this into Edgelet Module.
+                                c.Resolve<IRestartPolicyManager>()
+                ) as IPlanner)
+                .As<Task<IPlanner>>()
+                .SingleInstance();
+
 
             // ICombinedConfigProvider<CombinedDockerConfig>
             builder.Register(
