@@ -74,6 +74,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
 
         public const string DockerMode = "docker";
 
+        public const string KubernetesMode = "kubernetes";
+
         public const string NetworkIdKey = "NetworkId";
 
         public const string EdgeletWorkloadApiVersion = "2018-06-28";
