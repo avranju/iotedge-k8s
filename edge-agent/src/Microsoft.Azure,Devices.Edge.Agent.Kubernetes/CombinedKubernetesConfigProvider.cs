@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-namespace Microsoft.Azure.Devices.Edge.Agent.Edgelet.Docker
+namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
 {
     using System;
     using System.Collections.Generic;
-    using System.IO;
-    using System.Runtime.InteropServices;
     using global::Docker.DotNet.Models;
     using Microsoft.Azure.Devices.Edge.Agent.Core;
     using Microsoft.Azure.Devices.Edge.Agent.Docker;
@@ -13,11 +11,11 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Edgelet.Docker
     using Microsoft.Extensions.Configuration;
     using Newtonsoft.Json;
 
-    public class CombinedEdgeletConfigProvider : CombinedDockerConfigProvider
+    public class CombinedKubernetesConfigProvider : CombinedDockerConfigProvider
     {
         readonly IConfigSource configSource;
 
-        public CombinedEdgeletConfigProvider(IEnumerable<AuthConfig> authConfigs,
+        public CombinedKubernetesConfigProvider(IEnumerable<AuthConfig> authConfigs,
             IConfigSource configSource)
             : base(authConfigs)
         {
@@ -38,20 +36,20 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Edgelet.Docker
             this.MountSockets(module, createOptions);
             this.InjectNetworkAliases(module, createOptions);
 
-            return new CombinedDockerConfig((string)combinedConfig.Image, createOptions, combinedConfig.AuthConfig);
+            return new CombinedDockerConfig(combinedConfig.Image, createOptions, combinedConfig.AuthConfig);
         }
 
         void InjectNetworkAliases(IModule module, CreateContainerParameters createOptions)
         {
             if (createOptions.NetworkingConfig?.EndpointsConfig == null)
             {
-                string networkId = this.configSource.Configuration.GetValue<string>(Constants.NetworkIdKey);
-                string edgeDeviceHostName = this.configSource.Configuration.GetValue<string>(Constants.EdgeDeviceHostNameKey);
+                string networkId = this.configSource.Configuration.GetValue<string>(Core.Constants.NetworkIdKey);
+                string edgeDeviceHostName = this.configSource.Configuration.GetValue<string>(Core.Constants.EdgeDeviceHostNameKey);
 
                 if (!string.IsNullOrWhiteSpace(networkId))
                 {
                     var endpointSettings = new EndpointSettings();
-                    if (module.Name.Equals(Constants.EdgeHubModuleName, StringComparison.OrdinalIgnoreCase)
+                    if (module.Name.Equals(Core.Constants.EdgeHubModuleName, StringComparison.OrdinalIgnoreCase)
                         && !string.IsNullOrWhiteSpace(edgeDeviceHostName))
                     {
                         endpointSettings.Aliases = new List<string>
@@ -74,16 +72,16 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Edgelet.Docker
 
         void MountSockets(IModule module, CreateContainerParameters createOptions)
         {
-            var workloadUri = new Uri(this.configSource.Configuration.GetValue<string>(Constants.EdgeletWorkloadUriVariableName));
+            var workloadUri = new Uri(this.configSource.Configuration.GetValue<string>(Core.Constants.EdgeletWorkloadUriVariableName));
             if (workloadUri.Scheme == "unix")
             {
                 SetMountOptions(createOptions, workloadUri);
             }
 
-            // If Management URI is Unix domain socket, and the module is the EdgeAgent, then mount it into the container.
-            var managementUri = new Uri(this.configSource.Configuration.GetValue<string>(Constants.EdgeletManagementUriVariableName));
+            // If Management URI is Unix domain socket, and the module is the EdgeAgent, then mount it ino the container.
+            var managementUri = new Uri(this.configSource.Configuration.GetValue<string>(Core.Constants.EdgeletManagementUriVariableName));
             if (managementUri.Scheme == "unix"
-                && module.Name.Equals(Constants.EdgeAgentModuleName, StringComparison.OrdinalIgnoreCase))
+                && module.Name.Equals(Core.Constants.EdgeAgentModuleName, StringComparison.OrdinalIgnoreCase))
             {
                 SetMountOptions(createOptions, managementUri);
             }
@@ -93,20 +91,10 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Edgelet.Docker
         {
             HostConfig hostConfig = createOptions.HostConfig ?? new HostConfig();
             IList<string> binds = hostConfig.Binds ?? new List<string>();
-            string path = BindPath(uri);
-            binds.Add($"{path}:{path}");
+            binds.Add($"{uri.AbsolutePath}:{uri.AbsolutePath}");
 
             hostConfig.Binds = binds;
             createOptions.HostConfig = hostConfig;
-        }
-
-        static String BindPath(Uri uri)
-        {
-            // On Windows we need to bind to the parent folder. We can't bind
-            // directly to the socket file.
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? Path.GetDirectoryName(uri.LocalPath)
-                : uri.AbsolutePath;
         }
     }
 }
