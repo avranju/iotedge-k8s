@@ -5,6 +5,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.K8s.Operator
 {
     using System;
     using System.IO;
+    using Newtonsoft.Json;
     using k8s;
     using static System.Environment;
 
@@ -25,6 +26,33 @@ namespace Microsoft.Azure.Devices.Edge.Agent.K8s.Operator
             }
 
             var client = new Kubernetes(kubeConfig);
+            string path = $"apis/edge.azure-devices.net/v1beta1/watch/edgedeployments/edgy1";
+            client.WatchObjectAsync<EdgeDeployment>(
+                path,
+                onEvent: (eventType, deployment) =>
+                {
+                    Console.WriteLine($"Event Type: {eventType}");
+                    Console.WriteLine(JsonConvert.SerializeObject(deployment, Formatting.Indented));
+                },
+                onError: ex => Console.Error.WriteLine($"ERROR: {ex}"));
+
+            Console.WriteLine("Press return key to quit.");
+            Console.ReadLine();
         }
+    }
+
+    class EdgeModule
+    {
+        [JsonProperty(PropertyName = "id")]
+        public String Id { get; set; }
+
+        [JsonProperty(PropertyName = "image")]
+        public String Image { get; set; }
+    }
+
+    class EdgeDeployment
+    {
+        [JsonProperty(PropertyName = "modules")]
+        public EdgeModule[] Modules { get; set; }
     }
 }
