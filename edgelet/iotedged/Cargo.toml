@@ -40,7 +40,4 @@ windows-service = "0.1"
 
 win-logger = { path = "../win-logger" }
 
-[dev_dependencies]
-tempdir = "0.3.7"
-
 edgelet-test-utils = { path = "../edgelet-test-utils" }

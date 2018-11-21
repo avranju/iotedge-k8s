@@ -1,12 +1,21 @@
 // Copyright (c) Microsoft. All rights reserved.
 
+use std::fs;
+use std::str::FromStr;
+
 use clap::{App, Arg, ArgMatches};
 use edgelet_core;
-use edgelet_docker::DockerConfig;
+use edgelet_docker::{DockerModuleRuntime, Settings as DockerSettings};
+use failure::ResultExt;
 
-use error::Error;
+use error::{Error, ErrorKind, InitializeErrorReason};
 use logging;
-use settings::Settings;
+
+#[cfg(unix)]
+static DEFAULTS: &str = include_str!("config/unix/default.yaml");
+
+#[cfg(windows)]
+static DEFAULTS: &str = include_str!("config/windows/default.yaml");
 
 pub fn create_base_app<'a, 'b>() -> App<'a, 'b> {
     App::new(crate_name!())
@@ -46,28 +55,28 @@ pub fn log_banner() {
     info!("Version - {}", edgelet_core::version());
 }
 
-pub fn init_common<'a>() -> Result<(Settings<DockerConfig>, ArgMatches<'a>), Error> {
+pub fn init_common<'a>() -> Result<(DockerSettings, ArgMatches<'a>), Error> {
     let matches = create_app().get_matches();
     let settings = {
-        let config_file = matches
+        let config_str = matches
             .value_of("config-file")
-            .and_then(|name| {
+            .map(|name| {
                 info!("Using config file: {}", name);
-                Some(name)
-            })
-            .or_else(|| {
+                fs::read_to_string(name)
+            }).unwrap_or_else(|| {
                 info!("Using default configuration");
-                None
-            });
+                Ok(DEFAULTS.to_string())
+            }).context(ErrorKind::Initialize(InitializeErrorReason::LoadSettings))?;
 
-        Settings::<DockerConfig>::new(config_file)?
+        DockerSettings::from_str(&config_str)
+            .context(ErrorKind::Initialize(InitializeErrorReason::LoadSettings))?
     };
 
     Ok((settings, matches))
 }
 
 #[cfg(target_os = "windows")]
-pub fn init() -> Result<Settings<DockerConfig>, Error> {
+pub fn init() -> Result<(DockerModuleRuntime, DockerSettings), Error> {
     let (settings, matches) = init_common()?;
 
     if matches.is_present("use-event-logger") {
@@ -78,19 +87,19 @@ pub fn init() -> Result<Settings<DockerConfig>, Error> {
 
     log_banner();
 
-    Ok(settings)
+    Ok(DockerModuleRuntime::new(), settings)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn init() -> Result<Settings<DockerConfig>, Error> {
+pub fn init() -> Result<(DockerModuleRuntime, DockerSettings), Error> {
     logging::init();
     log_banner();
-    init_common().map(|(settings, _)| settings)
+    init_common().map(|(settings, _)| (DockerModuleRuntime::new(), settings))
 }
 
 #[cfg(target_os = "windows")]
-pub fn init_win_svc() -> Result<Settings<DockerConfig>, Error> {
+pub fn init_win_svc() -> Result<(DockerModuleRuntime, DockerSettings), Error> {
     logging::init_win_log();
     log_banner();
-    init_common().map(|(settings, _)| settings)
+    init_common().map(|(settings, _)| (DockerModuleRuntime::new(), settings))
 }
