@@ -89,6 +89,12 @@ impl DockerModuleRuntime {
     }
 }
 
+impl Default for DockerModuleRuntime {
+    fn default() -> DockerModuleRuntime {
+        DockerModuleRuntime::new()
+    }
+}
+
 impl ModuleRegistry for DockerModuleRuntime {
     type Error = Error;
     type PullFuture = Box<Future<Item = (), Error = Self::Error> + Send>;
