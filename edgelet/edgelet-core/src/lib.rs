@@ -25,6 +25,7 @@ extern crate log;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate sha2;
+#[cfg(feature = "runtime-docker")]
 extern crate tokio;
 extern crate url;
 extern crate url_serde;

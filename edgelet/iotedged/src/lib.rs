@@ -24,6 +24,8 @@ extern crate edgelet_http;
 extern crate edgelet_http_mgmt;
 extern crate edgelet_http_workload;
 extern crate edgelet_iothub;
+#[cfg(feature = "runtime-kubernetes")]
+extern crate edgelet_kube;
 #[cfg(test)]
 extern crate edgelet_test_utils;
 extern crate edgelet_utils;
@@ -87,7 +89,7 @@ use edgelet_core::crypto::{
 use edgelet_core::watchdog::Watchdog;
 use edgelet_core::{
     CertificateIssuer, CertificateProperties, CertificateType, Dps, Manual, Module, ModuleRuntime,
-    ModuleSpec, Provisioning, RuntimeSettings, WorkloadConfig,
+    ModuleRuntimeErrorReason, ModuleSpec, Provisioning, RuntimeSettings, WorkloadConfig,
 };
 use edgelet_hsm::tpm::{TpmKey, TpmKeyStore};
 use edgelet_hsm::Crypto;
@@ -200,6 +202,7 @@ where
     <M::Module as Module>::Config: Clone + DeserializeOwned + Serialize,
     M::Settings: 'static + Clone + Serialize,
     M::Logs: Into<Body>,
+    for<'r> &'r <M as ModuleRuntime>::Error: Into<ModuleRuntimeErrorReason>,
 {
     pub fn new(runtime: M, settings: M::Settings) -> Self {
         Main { runtime, settings }
@@ -534,6 +537,7 @@ where
     M: 'static + ModuleRuntime + Clone + Send + Sync,
     <M::Module as Module>::Config: Clone + DeserializeOwned + Serialize,
     M::Logs: Into<Body>,
+    for<'r> &'r <M as ModuleRuntime>::Error: Into<ModuleRuntimeErrorReason>,
 {
     let hub_name = workload_config.iot_hub_name().to_string();
     let device_id = workload_config.device_id().to_string();
@@ -723,6 +727,7 @@ where
     HC: 'static + ClientImpl,
     M: 'static + ModuleRuntime + Clone + Send + Sync,
     <M::Module as Module>::Config: Clone + DeserializeOwned + Serialize,
+    for<'r> &'r <M as ModuleRuntime>::Error: Into<ModuleRuntimeErrorReason>,
 {
     let spec = settings.agent().clone();
     let env = build_env(spec.env(), hostname, device_id, settings);
