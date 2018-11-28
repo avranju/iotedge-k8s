@@ -20,6 +20,7 @@ pub trait TokenSource {
     fn get(&self) -> Result<Option<String>>;
 }
 
+#[derive(Clone, Debug)]
 pub struct ValueToken(Option<String>);
 
 impl TokenSource for ValueToken {
@@ -30,14 +31,15 @@ impl TokenSource for ValueToken {
     }
 }
 
-pub struct Config<T> {
+#[derive(Clone)]
+pub struct Config<T: Clone> {
     host: Url,
     api_path: String,
     token_source: T,
     tls_connector: TlsConnector,
 }
 
-impl<T: TokenSource> Config<T> {
+impl<T: TokenSource + Clone> Config<T> {
     pub fn new(
         host: Url,
         api_path: String,

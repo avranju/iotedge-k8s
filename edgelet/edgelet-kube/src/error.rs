@@ -3,7 +3,7 @@
 use std::fmt;
 use std::fmt::Display;
 
-use edgelet_core::RuntimeOperation;
+use edgelet_core::{ModuleRuntimeErrorReason, RuntimeOperation};
 use failure::{Backtrace, Context, Fail};
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -26,6 +26,9 @@ pub enum ErrorKind {
 
     #[fail(display = "{}", _0)]
     RuntimeOperation(RuntimeOperation),
+
+    #[fail(display = "{}", _0)]
+    NotFound(String),
 }
 
 impl Fail for Error {
@@ -61,5 +64,14 @@ impl From<ErrorKind> for Error {
 impl From<Context<ErrorKind>> for Error {
     fn from(inner: Context<ErrorKind>) -> Self {
         Error { inner }
+    }
+}
+
+impl<'a> From<&'a Error> for ModuleRuntimeErrorReason {
+    fn from(err: &'a Error) -> Self {
+        match Fail::find_root_cause(err).downcast_ref::<ErrorKind>() {
+            Some(ErrorKind::NotFound(_)) => ModuleRuntimeErrorReason::NotFound,
+            _ => ModuleRuntimeErrorReason::Other,
+        }
     }
 }

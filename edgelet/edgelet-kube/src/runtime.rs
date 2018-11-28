@@ -16,6 +16,7 @@ use kube_client::{Client as KubeClient, ValueToken};
 use error::{Error, ErrorKind};
 use module::KubeModule;
 
+#[derive(Clone)]
 pub enum KubeModuleRuntime {
     Uninitialized,
     Initialized(KubeClient<ValueToken>),
