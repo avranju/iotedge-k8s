@@ -107,7 +107,7 @@ impl Settings {
                 // On Windows we mount the parent folder because we can't mount the
                 // socket files directly
                 #[cfg(windows)]
-                let path = path.parent().context(ErrorKind::InvalidSocketUri)??;
+                let path = path.parent().ok_or_else(|| ErrorKind::InvalidSocketUri)?;
                 let path = path
                     .to_str()
                     .ok_or_else(|| ErrorKind::InvalidSocketUri)?
