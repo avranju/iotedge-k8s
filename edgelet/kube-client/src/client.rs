@@ -13,12 +13,13 @@ use k8s_openapi::{http, Response as K8sResponse};
 use config::{Config, TokenSource};
 use error::{Error, ErrorKind};
 
-pub struct Client<T> {
+#[derive(Clone)]
+pub struct Client<T: Clone> {
     config: Config<T>,
     client: HyperClient<HttpsConnector<HttpConnector>>,
 }
 
-impl<T: TokenSource> Client<T> {
+impl<T: TokenSource + Clone> Client<T> {
     pub fn new(config: Config<T>) -> Client<T> {
         let mut http = HttpConnector::new(4);
         // if we don't do this then the HttpConnector rejects the "https" scheme

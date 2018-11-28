@@ -859,6 +859,7 @@ dependencies = [
  "edgelet-http-mgmt 0.1.0",
  "edgelet-http-workload 0.1.0",
  "edgelet-iothub 0.1.0",
+ "edgelet-kube 0.1.0",
  "edgelet-test-utils 0.1.0",
  "edgelet-utils 0.1.0",
  "env_logger 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
