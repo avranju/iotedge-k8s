@@ -5,6 +5,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using k8s;
@@ -45,7 +46,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             {
                 [typeof(IModule)] = new Dictionary<string, Type>
                 {
-                    ["docker"] = typeof(DockerDesiredModule)
+                    ["docker"] = typeof(CombinedDockerModule)
                 },
             };
 
@@ -66,12 +67,19 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             string metaApiVersion = Constants.k8sApi + "/" + Constants.k8sApiVersion;
 
             var modules = new List<KubernetesModule>();
+            var secrets = new Dictionary<string, KubernetesSecret>();
             runtimeInfo.ForEach( runtime => {
                 foreach (var m in this.modules)
                 {
                     var combinedConfig = this.combinedConfigProvider.GetCombinedConfig(m.Module, runtime);
                     var combinedModule = new CombinedDockerModule(m.Module.Name, m.Module.Version, m.Module.DesiredStatus, m.Module.RestartPolicy, combinedConfig as CombinedDockerConfig, m.Module.ConfigurationInfo, m.Module.Env);
                     var combinedIdentity = new KubernetesModule(combinedModule, m.ModuleIdentity);
+                    combinedModule.Config.AuthConfig.ForEach(
+                        auth =>
+                        {
+                            var kubernetesAuth = new KubernetesSecret(auth);
+                            secrets[kubernetesAuth.Name] = kubernetesAuth;
+                        });
                     modules.Add(combinedIdentity);
                 }
             });
@@ -94,6 +102,42 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             {
                 Console.WriteLine(parseException.Message);
                 activeDeployment = Option.None<EdgeDeploymentDefinition>();
+            }
+
+            foreach (KeyValuePair<string, KubernetesSecret> kubernetesSecret in secrets)
+            {
+                var secretData = new Dictionary<string, byte[]>();
+                secretData[".dockerconfigjson"] = Encoding.UTF8.GetBytes(kubernetesSecret.Value.GenerateSecret());
+                var secretMeta = new V1ObjectMeta(name: kubernetesSecret.Key);
+                var newSecret = new V1Secret("v1", secretData, type: "kubernetes.io/dockerconfigjson",kind:"Secret", metadata: secretMeta);
+                Option<V1Secret> currentSecret;
+                try
+                {
+                    currentSecret = Option.Maybe(await this.client.ReadNamespacedSecretAsync(kubernetesSecret.Key, "default", cancellationToken: token));
+                }
+                catch (Exception ex) when (!ex.IsFatal())
+                {
+                    currentSecret = Option.None<V1Secret>();
+                }
+
+                try
+                {
+                    await currentSecret.Match(
+                        async s =>
+                        {
+                            if (!s.Data[".dockerconfigjson"].SequenceEqual(secretData[".dockerconfigjson"]))
+                            {
+                                return await this.client.ReplaceNamespacedSecretAsync(newSecret, kubernetesSecret.Key, "default", cancellationToken: token);
+                            }
+
+                            return s;
+                        },
+                        async () => await this.client.CreateNamespacedSecretAsync(newSecret, "default", cancellationToken: token));
+                }
+                catch (Exception ex) when (!ex.IsFatal())
+                {
+                    Console.WriteLine(ex.Message);
+                }
             }
 
             var metadata = new V1ObjectMeta(name: resourceName, namespaceProperty: Constants.k8sNamespace);
