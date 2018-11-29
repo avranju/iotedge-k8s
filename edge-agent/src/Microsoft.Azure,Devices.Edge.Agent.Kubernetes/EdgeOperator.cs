@@ -5,6 +5,8 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Security.Cryptography;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using k8s;
@@ -12,6 +14,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using Microsoft.Azure.Devices.Edge.Agent.Core;
     using Microsoft.Azure.Devices.Edge.Agent.Core.Serde;
     using Microsoft.Azure.Devices.Edge.Agent.Kubernetes;
+    using Microsoft.Azure.Devices.Edge.Storage;
     using Microsoft.Azure.Devices.Edge.Util;
     using Microsoft.Azure.Devices.Edge.Util.Concurrency;
     using Microsoft.Rest;
@@ -52,7 +55,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 [typeof(IModule)] = new Dictionary<string, Type>
                 {
-                    ["docker"] = typeof(AgentDocker.DockerDesiredModule)
+                    ["docker"] = typeof(CombinedDockerModule)
                 }
             };
 
@@ -205,7 +208,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         {
             var serviceList = new List<V1ServicePort>();
             bool onlyExposedPorts = true;
-            if (module.Module is IModule<AgentDocker.DockerConfig> moduleWithDockerConfig)
+            if (module.Module is IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
             {
                 // Handle ExposedPorts entries
                 if (moduleWithDockerConfig.Config?.CreateOptions?.ExposedPorts != null)
@@ -340,9 +343,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         }
 
-        async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
+        List<V1Service> GetCurrentServiceConfig(V1ServiceList currentServices)
         {
-            List<V1Service> currentV1Services = currentServices.Items.Select(
+            return currentServices.Items.Select(
                 service =>
                 {
 
@@ -358,7 +361,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     }
                     return service;
                 }).ToList();
-            List<V1Deployment> currentV1Deployments = currentDeployments.Items.Select(
+        }
+
+        List<V1Deployment> GetCurrentDeploymentConfig(V1DeploymentList currentDeployments)
+        {
+            return currentDeployments.Items.Select(
                 deployment =>
                 {
                     try
@@ -374,6 +381,13 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                     return deployment;
                 }).ToList();
+        }
+
+        async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
+        {
+            // PUll current configuration from annotations.
+            List<V1Service> currentV1Services = this.GetCurrentServiceConfig(currentServices);
+            List<V1Deployment> currentV1Deployments = this.GetCurrentDeploymentConfig(currentDeployments);
 
             var desiredServices = new List<V1Service>();
             var desiredDeployments = new List<V1Deployment>();
@@ -515,7 +529,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         V1PodTemplateSpec GetPodFromModule(Dictionary<string, string> labels, KubernetesModule module)
         {
-            if (module.Module is IModule<AgentDocker.DockerConfig> moduleWithDockerConfig)
+            if (module.Module is IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
             {
                 //pod labels
                 var podLabels = new Dictionary<string, string>(labels);
@@ -560,7 +574,17 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 containerList.Add(moduleContainer);
                 // TODO: Add Proxy container here
 
-                var modulePodSpec = new V1PodSpec(containerList, volumes: volumeList);
+                //
+                Option<List<V1LocalObjectReference>> imageSecret = moduleWithDockerConfig.Config.AuthConfig.Map(
+                    auth =>
+                    {
+                        var secret = new KubernetesSecret(auth);
+                        var auth1 = new V1LocalObjectReference(secret.Name);
+                        var authList = new List<V1LocalObjectReference>();
+                        authList.Add(auth1);
+                        return authList;
+                    });
+                var modulePodSpec = new V1PodSpec(containerList, volumes: volumeList, imagePullSecrets: imageSecret.GetOrElse(() => null));
 
                 var objectMeta = new V1ObjectMeta(labels: podLabels);
                 return new V1PodTemplateSpec(metadata: objectMeta, spec: modulePodSpec);
@@ -572,7 +596,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return new V1PodTemplateSpec();
         }
 
-        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.DockerConfig> moduleWithDockerConfig)
+        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
         {
             if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
                 return Option.None<(List<V1Volume>, List<V1VolumeMount>)>();
@@ -622,7 +646,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return Option.None<(List<V1Volume>,List<V1VolumeMount>)>();
         }
 
-        List<V1EnvVar> CollectEnv(IModule<AgentDocker.DockerConfig> moduleWithDockerConfig)
+        List<V1EnvVar> CollectEnv(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
         {
             char[] envSplit = { '=' };
             var envList = new List<V1EnvVar>();
