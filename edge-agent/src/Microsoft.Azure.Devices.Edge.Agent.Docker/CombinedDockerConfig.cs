@@ -25,5 +25,13 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Docker
             this.CreateOptions = Preconditions.CheckNotNull(createOptions, nameof(createOptions));
             this.AuthConfig = authConfig;
         }
+
+        [JsonConstructor]
+        public CombinedDockerConfig(string image, CreateContainerParameters createOptions, AuthConfig auth)
+        {
+            this.Image = Preconditions.CheckNonWhiteSpace(image, nameof(image)).Trim();
+            this.CreateOptions = Preconditions.CheckNotNull(createOptions, nameof(createOptions));
+            this.AuthConfig = Option.Maybe(auth);
+        }
     }
 }
