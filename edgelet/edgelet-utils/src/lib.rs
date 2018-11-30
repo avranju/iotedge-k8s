@@ -69,6 +69,10 @@ pub fn prepare_cert_uri_module(hub_name: &str, device_id: &str, module_id: &str)
     )
 }
 
+pub fn prepare_dns_san_entry(name: &str) -> String {
+    format!("DNS: {}", name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,4 +133,8 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dns_san() {
+        assert_eq!("DNS: cow_say_moo", prepare_dns_san_entry("cow_say_moo"));
+    }
 }
