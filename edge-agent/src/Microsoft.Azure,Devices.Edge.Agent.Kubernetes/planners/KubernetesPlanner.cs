@@ -16,6 +16,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
     using Newtonsoft.Json;
     using Microsoft.Azure.Devices.Edge.Agent.Docker;
     using Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands;
+    using Microsoft.Azure_Devices.Edge.Agent.Kubernetes;
 
     public class KubernetesPlanner<T> : IPlanner
     {
@@ -60,19 +61,29 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
                 KubernetesModule moduleWithIdentity;
                 if (moduleIdentities.TryGetValue(m.Key, out IModuleIdentity moduleIdentity))
                 {
+                    IdentityProviderServiceCredentials creds;
+                    if (moduleIdentity.Credentials is IdentityProviderServiceCredentials moduleCreds)
+                    {
+                        creds = moduleCreds;
+                    }
+                    else
+                    {
+                        throw new InvalidIdentityException($"No valid credentials found for {moduleIdentity.DeviceId}/{moduleIdentity.ModuleId}");
+                    }
                     moduleWithIdentity = new KubernetesModule(
                         m.Value,
                         new KubernetesModuleIdentity(
                             moduleIdentity.IotHubHostname,
                             moduleIdentity.GatewayHostname,
                             moduleIdentity.DeviceId,
-                            moduleIdentity.ModuleId));
+                            moduleIdentity.ModuleId,
+                            creds));
                 }
                 else
                 {
                     moduleWithIdentity = new KubernetesModule(
                         m.Value,
-                        new KubernetesModuleIdentity(this.iotHubHostname, this.gatewayHostname, this.deviceId, m.Key));
+                        new KubernetesModuleIdentity(this.iotHubHostname, this.gatewayHostname, this.deviceId, m.Key, new IdentityProviderServiceCredentials("management","9343473")));
                 }
                 k8sModules.Add(moduleWithIdentity);
             
