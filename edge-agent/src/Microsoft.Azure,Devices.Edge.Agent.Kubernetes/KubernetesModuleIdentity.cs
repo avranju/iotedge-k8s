@@ -6,12 +6,13 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
 
     public class KubernetesModuleIdentity 
     {
-        public KubernetesModuleIdentity(string iotHubHostname, string gatewayHostname, string deviceId, string moduleId)
+        public KubernetesModuleIdentity(string iotHubHostname, string gatewayHostname, string deviceId, string moduleId, IdentityProviderServiceCredentials credentials)
         {
             this.IotHubHostname = Preconditions.CheckNonWhiteSpace(iotHubHostname, nameof(this.IotHubHostname));
             this.GatewayHostname = gatewayHostname;
             this.DeviceId = Preconditions.CheckNonWhiteSpace(deviceId, nameof(this.DeviceId));
             this.ModuleId = Preconditions.CheckNonWhiteSpace(moduleId, nameof(this.ModuleId));
+            this.Credentials = Preconditions.CheckNotNull(credentials, nameof(this.Credentials));
         }
 
         public string IotHubHostname { get; }
@@ -21,5 +22,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
         public string DeviceId { get; }
 
         public string ModuleId { get; }
+
+        public IdentityProviderServiceCredentials Credentials { get; }
     }
 }

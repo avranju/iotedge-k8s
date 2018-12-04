@@ -52,8 +52,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             builder.Register(c =>
                 {
                     //var config = new KubernetesClientConfiguration { Host = "http://127.0.0.1:35456/" };
-                    KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
-                    //var config = KubernetesClientConfiguration.InClusterConfig();
+                    //KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+                    KubernetesClientConfiguration config = KubernetesClientConfiguration.InClusterConfig();
                     var client = new Kubernetes(config);
                     return client;
                 })
@@ -116,7 +116,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
 
             // IRuntimeInfoProvider, IKubernetesOperator
             builder.Register(
-                 c => Task.FromResult(new EdgeOperator(this.iotHubHostname, this.deviceId, c.Resolve<IKubernetes>()) as IRuntimeInfoProvider))
+                    c => Task.FromResult(new EdgeOperator(this.iotHubHostname, this.deviceId, this.gatewayHostname, c.Resolve<IKubernetes>()) as IRuntimeInfoProvider))
                 .As<Task<IRuntimeInfoProvider>>()
                 .SingleInstance();
 

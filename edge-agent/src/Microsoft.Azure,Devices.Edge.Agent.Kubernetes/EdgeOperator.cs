@@ -24,10 +24,19 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using DockerModels =  global::Docker.DotNet.Models;
     using AgentDocker = Microsoft.Azure.Devices.Edge.Agent.Docker;
     using Constants = Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Constants;
+    using CoreConstants = Microsoft.Azure.Devices.Edge.Agent.Core.Constants;
     using VolumeOptions = Microsoft.Azure.Devices.Edge.Util.Option<(System.Collections.Generic.List<k8s.Models.V1Volume>, System.Collections.Generic.List<k8s.Models.V1VolumeMount>)>;
 
     public class EdgeOperator : IKubernetesOperator, IRuntimeInfoProvider
     {
+        public const string WorkloadUri = "unix:///var/run/iotedge/workload.sock";
+        public const string WorkloadDir = "/var/run/iotedge";
+        public const string WorkloadName = "workload";
+        public const string ManagementUri = "unix:///var/run/iotedge_mgmt/mgmt.sock";
+        public const string ManagementDir = "/var/run/iotedge_mgmt";
+        public const string ManagementName = "management";
+        public const string EdgeHubHostname = "edgehub";
+
         readonly IKubernetes client;
 
         Option<Watcher<V1Pod>> podWatch;
@@ -36,15 +45,17 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         Option<Watcher<object>> operatorWatch;
         readonly string iotHubHostname;
         readonly string deviceId;
+        readonly string edgeHostname;
         readonly string resourceName;
         readonly string deploymentSelector;
         readonly TypeSpecificSerDe<EdgeDeploymentDefinition> deploymentSerde;
         readonly JsonSerializerSettings crdSerializerSettings;
 
-        public EdgeOperator(string iotHubHostname, string deviceId, IKubernetes client)
+        public EdgeOperator(string iotHubHostname, string deviceId, string edgeHostname, IKubernetes client)
         {
             this.iotHubHostname = Preconditions.CheckNonWhiteSpace(iotHubHostname, nameof(iotHubHostname));
             this.deviceId = Preconditions.CheckNonWhiteSpace(deviceId, nameof(deviceId));
+            this.edgeHostname = Preconditions.CheckNonWhiteSpace(edgeHostname, nameof(edgeHostname));
             this.client = Preconditions.CheckNotNull(client, nameof(client));
             this.moduleRuntimeInfos = new Dictionary<string, ModuleRuntimeInfo>();
             this.moduleLock = new AsyncLock();
@@ -55,7 +66,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 [typeof(IModule)] = new Dictionary<string, Type>
                 {
-                    ["docker"] = typeof(CombinedDockerModule)
+                    ["docker"] = typeof(KubernetesModule)
                 }
             };
 
@@ -396,10 +407,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 if (string.Equals(module.Module.Type, "docker"))
                 {
                     // Default labels
-                    var labels = new Dictionary<string, string>();
-                    labels.Add(Constants.k8sEdgeModuleLabel, module.ModuleIdentity.ModuleId);
-                    labels.Add(Constants.k8sEdgeDeviceLabel, this.deviceId);
-                    labels.Add(Constants.k8sEdgeHubNameLabel, this.iotHubHostname);
+                    var labels = new Dictionary<string, string>
+                    {
+                        [Constants.k8sEdgeModuleLabel] = module.ModuleIdentity.ModuleId,
+                        [Constants.k8sEdgeDeviceLabel] = this.deviceId,
+                        [Constants.k8sEdgeHubNameLabel] = this.iotHubHostname
+                    };
 
                     // Create a Service for every network interface of each module. (label them with hub, device and module id)
                     Option<V1Service> moduleService = this.GetServiceFromModule(labels, module);
@@ -447,8 +460,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         string creationString = JsonConvert.SerializeObject(s);
                         if (s.Metadata.Annotations == null)
                         {
-                            var annotations = new Dictionary<string, string>();
-                            annotations.Add(Constants.CreationString, creationString);
+                            var annotations = new Dictionary<string, string>
+                            {
+                                [Constants.CreationString] = creationString
+                            };
                             s.Metadata.Annotations = annotations;
                         }
                         else
@@ -463,8 +478,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     else
                     {
                         string creationString = JsonConvert.SerializeObject(s);
-                        var annotations = new Dictionary<string, string>();
-                        annotations.Add(Constants.CreationString, creationString);
+                        var annotations = new Dictionary<string, string>
+                        {
+                            [Constants.CreationString] = creationString
+                        };
                         s.Metadata.Annotations = annotations;
                         newServices.Add(s);
                         Events.CreateService(s.Metadata.Name);
@@ -486,8 +503,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         d.Metadata.ResourceVersion = current.Metadata.ResourceVersion;
                         if (d.Metadata.Annotations == null)
                         {
-                            var annotations = new Dictionary<string, string>();
-                            annotations.Add(Constants.CreationString, creationString);
+                            var annotations = new Dictionary<string, string>
+                            {
+                                [Constants.CreationString] = creationString
+                            };
                             d.Metadata.Annotations = annotations;
                         }
                         else
@@ -500,8 +519,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     else
                     {
                         string creationString = JsonConvert.SerializeObject(d);
-                        var annotations = new Dictionary<string, string>();
-                        annotations.Add(Constants.CreationString, creationString);
+                        var annotations = new Dictionary<string, string>
+                        {
+                            [Constants.CreationString] = creationString
+                        };
                         d.Metadata.Annotations = annotations;
                         newDeployments.Add(d);
                         Events.CreateDeployment(d.Metadata.Name);
@@ -555,33 +576,35 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     Option.None<V1SecurityContext>();
 
                 // Environment Variables.
-                List<V1EnvVar> env = this.CollectEnv(moduleWithDockerConfig);
+                List<V1EnvVar> env = this.CollectEnv(moduleWithDockerConfig, module.ModuleIdentity);
 
                 // Bind mounts
-                (List<V1Volume> volumeList, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig).GetOrElse((null, null));
+                (List<V1Volume> volumeList, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null));
 
                 //Image
                 string moduleImage = moduleWithDockerConfig.Config.Image;
 
-                var moduleContainer = new V1Container(module.ModuleIdentity.ModuleId.ToLower(),
-                                                              env: env,
-                                                              image: moduleImage,
-                                                              volumeMounts: volumeMountList,
-                                                              securityContext: securityContext.GetOrElse(() => null),
-                                                              ports:exposedPortsOption.GetOrElse(() => null)
-                                                              );
-                var containerList = new List<V1Container>();
-                containerList.Add(moduleContainer);
-                // TODO: Add Proxy container here
+                var containerList = new List<V1Container>()
+                {
+                    new V1Container(module.ModuleIdentity.ModuleId.ToLower(),
+                        env: env,
+                        image: moduleImage,
+                        volumeMounts: volumeMountList,
+                        securityContext: securityContext.GetOrElse(() => null),
+                        ports:exposedPortsOption.GetOrElse(() => null)
+                    )
+                    // TODO: Add Proxy container here
+                };
 
                 //
                 Option<List<V1LocalObjectReference>> imageSecret = moduleWithDockerConfig.Config.AuthConfig.Map(
                     auth =>
                     {
-                        var secret = new KubernetesSecret(auth);
-                        var auth1 = new V1LocalObjectReference(secret.Name);
-                        var authList = new List<V1LocalObjectReference>();
-                        authList.Add(auth1);
+                        var secret = new ImagePullSecret(auth);
+                        var authList = new List<V1LocalObjectReference>
+                        {
+                            new V1LocalObjectReference(secret.Name)
+                        };
                         return authList;
                     });
                 var modulePodSpec = new V1PodSpec(containerList, volumes: volumeList, imagePullSecrets: imageSecret.GetOrElse(() => null));
@@ -596,13 +619,26 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return new V1PodTemplateSpec();
         }
 
-        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
+        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
         {
-            if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
-                return Option.None<(List<V1Volume>, List<V1VolumeMount>)>();
+            var volumeList = new List<V1Volume>
+            {
+                new V1Volume(EdgeOperator.WorkloadName, emptyDir: new V1EmptyDirVolumeSource())
+            };
+            var volumeMountList = new List<V1VolumeMount>
+            {
+                new V1VolumeMount(WorkloadDir,WorkloadName)
+            };
 
-            var volumeList = new List<V1Volume>();
-            var volumeMountList = new List<V1VolumeMount>();
+            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName))
+            {
+                volumeList.Add(new V1Volume(ManagementName, emptyDir: new V1EmptyDirVolumeSource()));
+                volumeMountList.Add(new V1VolumeMount(ManagementDir, ManagementName));
+            }
+
+            if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
+                return Option.Some((volumeList, volumeMountList));
+
             if (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds != null)
             {
                 foreach (var bind in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds)
@@ -646,7 +682,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return Option.None<(List<V1Volume>,List<V1VolumeMount>)>();
         }
 
-        List<V1EnvVar> CollectEnv(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
+        List<V1EnvVar> CollectEnv(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
         {
             char[] envSplit = { '=' };
             var envList = new List<V1EnvVar>();
@@ -667,6 +703,28 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }
             }
 
+            envList.Add(new V1EnvVar(CoreConstants.IotHubHostnameVariableName, this.iotHubHostname));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletAuthSchemeVariableName, "sasToken"));
+            envList.Add(new V1EnvVar(Logger.RuntimeLogLevelEnvKey, Logger.GetLogLevel().ToString()));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletWorkloadUriVariableName, EdgeOperator.WorkloadUri));
+            envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletModuleGenerationIdVariableName, "GET THIS FROM MODULE IDENTITY"));
+            envList.Add(new V1EnvVar(CoreConstants.DeviceIdVariableName, this.deviceId)); // could also get this from module identity
+            envList.Add(new V1EnvVar(CoreConstants.ModuleIdVariableName, identity.ModuleId));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletApiVersionVariableName, CoreConstants.EdgeletWorkloadApiVersion));
+
+            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName))
+            {
+                envList.Add(new V1EnvVar(CoreConstants.ModeKey, CoreConstants.KubernetesMode));
+                envList.Add(new V1EnvVar(CoreConstants.EdgeletManagementUriVariableName, EdgeOperator.ManagementUri));
+                envList.Add(new V1EnvVar(CoreConstants.NetworkIdKey, "azure-iot-edge"));
+            }
+
+            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName) ||
+                string.Equals(identity.ModuleId, CoreConstants.EdgeHubModuleName))
+            {
+                envList.Add(new V1EnvVar(CoreConstants.EdgeDeviceHostNameKey, this.edgeHostname));
+            }
             return envList;
         }
 
