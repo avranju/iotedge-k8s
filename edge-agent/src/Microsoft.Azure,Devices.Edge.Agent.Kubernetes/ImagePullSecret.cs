@@ -11,7 +11,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using Org.BouncyCastle.Bcpg;
     using Org.BouncyCastle.Utilities.Encoders;
 
-    class KubernetesSecret
+    class ImagePullSecret
     {
         class AuthEntry
         {
@@ -57,7 +57,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             //   { "<registry>" :
             //     { "username":"<user>",
             //       "password":"<password>",
-            //       "email":"<email>",
+            //       "email":"<email>" (not needed)
             //       "auth":"<base 64 of '<user>:<password>'>"
             //     }
             //   }
@@ -67,7 +67,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             string authString = JsonConvert.SerializeObject(auths);
             return authString;
         }
-        public KubernetesSecret(AuthConfig dockerAuth)
+        public ImagePullSecret(AuthConfig dockerAuth)
         {
             this.dockerAuth = dockerAuth;
             this.Name = $"{dockerAuth.Username.ToLower()}-{dockerAuth.ServerAddress.ToLower()}";

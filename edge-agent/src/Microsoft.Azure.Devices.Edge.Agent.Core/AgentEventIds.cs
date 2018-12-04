@@ -23,5 +23,6 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
         public const int ModuleIdentityLifecycleManager = EventIdStart + 1600;
         public const int KubernetesPlanner = EventIdStart + 1700;
         public const int KubernetesOperator = EventIdStart + 1800;
+        public const int KubernetesCommand = EventIdStart + 1900;
     }
 }
