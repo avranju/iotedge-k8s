@@ -25,5 +25,9 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
         public const string CreationString = "net.azure-devices.edge.creationstring";
 
         public const string k8sNameDivider = "-";
+
+        public const string k8sPullSecretType = "kubernetes.io/dockerconfigjson";
+
+        public const string k8sPullSecretData = ".dockerconfigjson";
     }
 }
