@@ -38,14 +38,27 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
         public IDictionary<string, EnvVal> Env { get; }
 
         public CombinedDockerModule(string name, string version, ModuleStatus desiredStatus, RestartPolicy restartPolicy,
-            CombinedDockerConfig config, ConfigurationInfo configurationInfo, IDictionary<string, EnvVal> env)
+            CombinedDockerConfig settings, ConfigurationInfo configurationInfo, IDictionary<string, EnvVal> env)
         {
             this.Name = name;
             this.Version = version ?? string.Empty;
             this.DesiredStatus = Preconditions.CheckIsDefined(desiredStatus);
-            this.Config = Preconditions.CheckNotNull(config, nameof(config));
+            this.Config = Preconditions.CheckNotNull(settings, nameof(settings));
             this.RestartPolicy = Preconditions.CheckIsDefined(restartPolicy);
             this.ConfigurationInfo = configurationInfo ?? new ConfigurationInfo(string.Empty);
+            this.Env = env?.ToImmutableDictionary() ?? ImmutableDictionary<string, EnvVal>.Empty;
+        }
+
+        [JsonConstructor]
+        public CombinedDockerModule(string version, ModuleStatus status, RestartPolicy restartPolicy, string type,
+            CombinedDockerConfig settings, IDictionary<string, EnvVal> env)
+        {
+            this.Name = null;
+            this.Version = version ?? string.Empty;
+            this.DesiredStatus = Preconditions.CheckIsDefined(status);
+            this.Config = Preconditions.CheckNotNull(settings, nameof(settings));
+            this.RestartPolicy = Preconditions.CheckIsDefined(restartPolicy);
+            this.ConfigurationInfo = new ConfigurationInfo(string.Empty);
             this.Env = env?.ToImmutableDictionary() ?? ImmutableDictionary<string, EnvVal>.Empty;
         }
 

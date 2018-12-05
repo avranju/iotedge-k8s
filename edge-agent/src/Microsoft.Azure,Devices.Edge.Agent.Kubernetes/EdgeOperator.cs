@@ -25,17 +25,18 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using AgentDocker = Microsoft.Azure.Devices.Edge.Agent.Docker;
     using Constants = Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Constants;
     using CoreConstants = Microsoft.Azure.Devices.Edge.Agent.Core.Constants;
-    using VolumeOptions = Microsoft.Azure.Devices.Edge.Util.Option<(System.Collections.Generic.List<k8s.Models.V1Volume>, System.Collections.Generic.List<k8s.Models.V1VolumeMount>)>;
+    using VolumeOptions =
+        Microsoft.Azure.Devices.Edge.Util.Option<(System.Collections.Generic.List<k8s.Models.V1Volume>,
+            System.Collections.Generic.List<k8s.Models.V1VolumeMount>, System.Collections.Generic.List<k8s.Models.V1VolumeMount>)>;
 
     public class EdgeOperator : IKubernetesOperator, IRuntimeInfoProvider
     {
         public const string WorkloadUri = "unix:///var/run/iotedge/workload.sock";
-        public const string WorkloadDir = "/var/run/iotedge";
-        public const string WorkloadName = "workload";
-        public const string ManagementUri = "unix:///var/run/iotedge_mgmt/mgmt.sock";
-        public const string ManagementDir = "/var/run/iotedge_mgmt";
-        public const string ManagementName = "management";
+        public const string SocketDir = "/var/run/iotedge";
+        public const string SocketVolumeName = "workload";
+        public const string ManagementUri = "unix:///var/run/iotedge/mgmt.sock";
         public const string EdgeHubHostname = "edgehub";
+        public const string ConfigVolumeName = "config-volume";
 
         readonly IKubernetes client;
 
@@ -66,7 +67,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 [typeof(IModule)] = new Dictionary<string, Type>
                 {
-                    ["docker"] = typeof(KubernetesModule)
+                    ["docker"] = typeof(CombinedDockerModule)
                 }
             };
 
@@ -579,7 +580,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 List<V1EnvVar> env = this.CollectEnv(moduleWithDockerConfig, module.ModuleIdentity);
 
                 // Bind mounts
-                (List<V1Volume> volumeList, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null));
+                (List<V1Volume> volumeList, List <V1VolumeMount> proxyMounts, List < V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null, null));
 
                 //Image
                 string moduleImage = moduleWithDockerConfig.Config.Image;
@@ -592,8 +593,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         volumeMounts: volumeMountList,
                         securityContext: securityContext.GetOrElse(() => null),
                         ports:exposedPortsOption.GetOrElse(() => null)
-                    )
-                    // TODO: Add Proxy container here
+                    ),
+                    // TODO: Add Proxy container here - configmap for proxy configuration.
+                    new V1Container("proxy",
+                        env:env, // TODO: check these for validity for proxy.
+                        image: Constants.proxyImage,
+                        volumeMounts: proxyMounts)
                 };
 
                 //
@@ -621,23 +626,26 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
         {
+            V1ConfigMapVolumeSource v1ConfigMapVolumeSource = string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName)
+                ? new V1ConfigMapVolumeSource(null, null, Constants.AgentConfigMap, null)
+                : new V1ConfigMapVolumeSource(null, null, Constants.ModuleConfigMap, null);
+
+
             var volumeList = new List<V1Volume>
             {
-                new V1Volume(EdgeOperator.WorkloadName, emptyDir: new V1EmptyDirVolumeSource())
+                new V1Volume(SocketVolumeName, emptyDir: new V1EmptyDirVolumeSource()),
+                new V1Volume(ConfigVolumeName,configMap: v1ConfigMapVolumeSource)
             };
-            var volumeMountList = new List<V1VolumeMount>
+            var proxyMountList = new List<V1VolumeMount>
             {
-                new V1VolumeMount(WorkloadDir,WorkloadName)
+                new V1VolumeMount(SocketDir,SocketVolumeName),
+                new V1VolumeMount("/etc/config", ConfigVolumeName)
             };
+            var volumeMountList = new List<V1VolumeMount>(proxyMountList);
 
-            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName))
-            {
-                volumeList.Add(new V1Volume(ManagementName, emptyDir: new V1EmptyDirVolumeSource()));
-                volumeMountList.Add(new V1VolumeMount(ManagementDir, ManagementName));
-            }
 
             if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
-                return Option.Some((volumeList, volumeMountList));
+                return Option.Some((volumeList, proxyMountList, volumeMountList));
 
             if (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds != null)
             {
@@ -674,12 +682,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }
             }
 
-            if (volumeList.Count > 0  || volumeMountList.Count > 0)
-            {
-                return Option.Some((volumeList, volumeMountList));
-            }
-
-            return Option.None<(List<V1Volume>,List<V1VolumeMount>)>();
+            return volumeList.Count > 0  || volumeMountList.Count > 0
+                ? Option.Some((volumeList, proxyMountList, volumeMountList))
+                : Option.None<(List<V1Volume>,List<V1VolumeMount>, List<V1VolumeMount>)>();
         }
 
         List<V1EnvVar> CollectEnv(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
@@ -695,10 +700,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 foreach (var hostEnv in moduleWithDockerConfig.Config?.CreateOptions?.Env)
                 {
-                    string[] key_value = hostEnv.Split(envSplit, 2);
-                    if (key_value.Count() == 2)
+                    string[] keyValue = hostEnv.Split(envSplit, 2);
+                    if (keyValue.Count() == 2)
                     {
-                        envList.Add(new V1EnvVar(key_value[0], key_value[1]));
+                        envList.Add(new V1EnvVar(keyValue[0], keyValue[1]));
                     }
                 }
             }
@@ -708,7 +713,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             envList.Add(new V1EnvVar(Logger.RuntimeLogLevelEnvKey, Logger.GetLogLevel().ToString()));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletWorkloadUriVariableName, EdgeOperator.WorkloadUri));
             envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
-            envList.Add(new V1EnvVar(CoreConstants.EdgeletModuleGenerationIdVariableName, "GET THIS FROM MODULE IDENTITY"));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletModuleGenerationIdVariableName, identity.Credentials.ModuleGenerationId));
             envList.Add(new V1EnvVar(CoreConstants.DeviceIdVariableName, this.deviceId)); // could also get this from module identity
             envList.Add(new V1EnvVar(CoreConstants.ModuleIdVariableName, identity.ModuleId));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletApiVersionVariableName, CoreConstants.EdgeletWorkloadApiVersion));
