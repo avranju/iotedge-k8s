@@ -47,8 +47,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             {
                 [typeof(IModule)] = new Dictionary<string, Type>
                 {
-                    ["docker"] = typeof(KubernetesModule)
-                },
+                    ["docker"] = typeof(CombinedDockerModule)
+                }
             };
 
             this.deploymentSerde = new TypeSpecificSerDe<EdgeDeploymentDefinition>(deserializerTypesMap, new CamelCasePropertyNamesContractResolver());
