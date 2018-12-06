@@ -37,6 +37,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         public const string ManagementUri = "unix:///var/run/iotedge/mgmt.sock";
         public const string EdgeHubHostname = "edgehub";
         public const string ConfigVolumeName = "config-volume";
+        public const string ProxyConfigDir = "/etc/envoy";
 
         readonly IKubernetes client;
 
@@ -638,10 +639,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             };
             var proxyMountList = new List<V1VolumeMount>
             {
-                new V1VolumeMount(SocketDir,SocketVolumeName),
-                new V1VolumeMount("/etc/config", ConfigVolumeName)
+                new V1VolumeMount(SocketDir,SocketVolumeName)
             };
             var volumeMountList = new List<V1VolumeMount>(proxyMountList);
+            proxyMountList.Add(new V1VolumeMount(ProxyConfigDir, ConfigVolumeName));
 
 
             if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
