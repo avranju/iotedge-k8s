@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 
-use error::Error;
+use error::{Error, ErrorKind};
 use module::{Module, ModuleRuntime, ModuleSpec};
 
 use futures::{future, Future};
@@ -27,12 +27,12 @@ where
         self,
         _spec: ModuleSpec<<M::Module as Module>::Config>,
         _module_id: &str,
-        _shutdown_signal: F,
+        shutdown_signal: F,
     ) -> impl Future<Item = (), Error = Error>
     where
         F: Future<Item = (), Error = ()> + 'static,
     {
-        future::ok(())
+        shutdown_signal.map_err(|_| Error::from(ErrorKind::Shutdown))
     }
 }
 

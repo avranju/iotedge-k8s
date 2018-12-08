@@ -244,7 +244,8 @@ where
                     .update(
                         IdentitySpec::new(module.module_id().to_string())
                             .with_generation_id(module.generation_id().to_string()),
-                    ).map_err(|e| Error::from(e.context(ErrorKind::IdentityManager)));
+                    )
+                    .map_err(|e| Error::from(e.context(ErrorKind::IdentityManager)));
                 Either::A(res)
             }
             None => Either::B(

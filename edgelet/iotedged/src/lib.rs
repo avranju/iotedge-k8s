@@ -445,7 +445,8 @@ fn diff_with_cached<T: Serialize>(settings: &T, path: PathBuf) -> Result<bool, E
             } else {
                 Ok(true)
             }
-        }).or_else(|err| {
+        })
+        .or_else(|err| {
             log_failure(Level::Debug, &err);
             debug!("Error reading config backup.");
             Ok(true)
