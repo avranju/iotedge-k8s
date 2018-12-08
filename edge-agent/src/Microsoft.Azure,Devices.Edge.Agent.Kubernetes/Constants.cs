@@ -30,7 +30,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
 
         public const string k8sPullSecretData = ".dockerconfigjson";
 
-        public const string proxyImage = "envoyproxy/envoy:latest";
+        public const string proxyImage = "darobs/envoy:0.1";
 
         public const string AgentConfigMap = "edgeagentconfigmap";
 
