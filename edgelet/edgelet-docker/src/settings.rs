@@ -245,7 +245,8 @@ mod tests {
                     c.trusted_ca_certs().to_str().unwrap(),
                     "trusted_ca_certs.pem"
                 );
-            }).expect("certificates not configured");
+            })
+            .expect("certificates not configured");
     }
 
     #[test]

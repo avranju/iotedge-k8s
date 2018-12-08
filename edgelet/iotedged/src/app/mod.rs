@@ -40,10 +40,12 @@ pub fn init_common<'a>() -> Result<(DockerSettings, ArgMatches<'a>), Error> {
             .map(|name| {
                 info!("Using config file: {}", name);
                 fs::read_to_string(name)
-            }).unwrap_or_else(|| {
+            })
+            .unwrap_or_else(|| {
                 info!("Using default configuration");
                 Ok(DEFAULTS.to_string())
-            }).context(ErrorKind::Initialize(InitializeErrorReason::LoadSettings))?;
+            })
+            .context(ErrorKind::Initialize(InitializeErrorReason::LoadSettings))?;
 
         DockerSettings::from_str(&config_str)
             .context(ErrorKind::Initialize(InitializeErrorReason::LoadSettings))?

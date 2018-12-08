@@ -1,0 +1,36 @@
+# iotedged configuration
+iotedged:
+  image:
+    repository: edgebuilds.azurecr.io/microsoft/azureiotedge-iotedged
+    tag: 1.0.5-linux-amd64
+    pullPolicy: Always
+  service:
+    name: iotedged
+    type: NodePort
+  apiVersion: "2018-06-28"
+  # TCP ports on which iotedged should listen
+  ports:
+    management: 35000
+    workload: 35001
+
+# Edge Agent image configuration
+edgeAgent:
+  repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
+  tag: 18950689-linux-amd64
+  # Optional registry credentials for edge agent's image
+  registryCredentials:
+    username: EdgeBuilds
+    password: "<PASSWORD HERE>"
+    serveraddress: edgebuilds.azurecr.io
+
+# Registry credentials for module images
+registryCredentials:
+  edgebuilds.azurecr.io:
+    username: EdgeBuilds
+    password: "<PASSWORD HERE>"
+
+# Azure IoT Hub device connection string
+deviceConnectionString: "<ADD DEVICE CONNECTION STRING HERE>"
+
+# Deploy debug container?
+deployDebugContainer: true

@@ -97,7 +97,8 @@ fn init_crypto() -> Crypto {
         "test-iotedge-cn".to_string(),
         CertificateType::Ca,
         IOTEDGED_CA_ALIAS.to_string(),
-    ).with_issuer(CertificateIssuer::DeviceCa);
+    )
+    .with_issuer(CertificateIssuer::DeviceCa);
     let workload_ca_cert = crypto.create_certificate(&edgelet_ca_props).unwrap();
     assert!(!workload_ca_cert.pem().unwrap().as_bytes().is_empty());
 
@@ -151,7 +152,8 @@ fn generate_server_cert(
         .uri(format!(
             "http://localhost/modules/{}/genid/{}/certificate/server",
             module_id, generation_id
-        )).header("Content-Type", "application/json")
+        ))
+        .header("Content-Type", "application/json")
         .body(Body::from(json))
         .unwrap();
 
@@ -206,11 +208,13 @@ fn run_echo_server(server_cert: Identity, port: u16) -> impl Future<Item = (), E
 
                     tokio::spawn(conn);
                     Ok(())
-                }).map_err(|err| panic!("TLS accept error: {:#?}", err));
+                })
+                .map_err(|err| panic!("TLS accept error: {:#?}", err));
 
             tokio::spawn(tls_accept);
             Ok(())
-        }).map_err(|err| panic!("server error: {:#?}", err))
+        })
+        .map_err(|err| panic!("server error: {:#?}", err))
 }
 
 fn run_echo_client(
@@ -250,7 +254,8 @@ fn run_echo_client(
             tls_connector
                 .connect(&module_id, socket)
                 .map_err(|err| panic!("TLS client connect error: {:#?}", err))
-        }).and_then(|socket| io::write_all(socket, MESSAGE.as_bytes()))
+        })
+        .and_then(|socket| io::write_all(socket, MESSAGE.as_bytes()))
         .and_then(|(socket, _)| io::read_exact(socket, vec![0_u8; MESSAGE.as_bytes().len()]))
         .map(|(_, buff)| assert_eq!(MESSAGE, str::from_utf8(&buff).unwrap()))
         .map_err(|err| panic!("TLS read error: {:#?}", err))

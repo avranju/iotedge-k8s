@@ -245,7 +245,8 @@ impl ModuleRuntime for DockerModuleRuntime {
                     });
 
                 Either::A(fut)
-            }).unwrap_or_else(|err| Either::B(Err(err).into_future()));
+            })
+            .unwrap_or_else(|err| Either::B(Err(err).into_future()));
 
         let created = created.then(|result| {
             match result {

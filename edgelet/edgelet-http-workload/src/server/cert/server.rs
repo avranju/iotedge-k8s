@@ -93,7 +93,8 @@ where
                     common_name.to_string(),
                     CertificateType::Server,
                     alias.clone(),
-                ).with_san_entries(sans);
+                )
+                .with_san_entries(sans);
                 let body = refresh_cert(
                     &hsm,
                     alias,
