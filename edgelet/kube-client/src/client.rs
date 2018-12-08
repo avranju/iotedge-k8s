@@ -43,7 +43,8 @@ impl<T: TokenSource + Clone> Client<T> {
             None,
             None,
             None,
-        ).map_err(Error::from)
+        )
+        .map_err(Error::from)
         .map(|req| {
             let fut = self.request(req).and_then(|response| match response {
                 apps::CreateAppsV1NamespacedDeploymentResponse::Accepted(deployment)
@@ -53,7 +54,8 @@ impl<T: TokenSource + Clone> Client<T> {
             });
 
             Either::A(fut)
-        }).unwrap_or_else(|err| Either::B(future::err(err)))
+        })
+        .unwrap_or_else(|err| Either::B(future::err(err)))
     }
 
     pub fn list_pods(
@@ -62,7 +64,8 @@ impl<T: TokenSource + Clone> Client<T> {
     ) -> impl Future<Item = api_core::PodList, Error = Error> {
         api_core::Pod::list_core_v1_namespaced_pod(
             namespace, None, None, None, None, None, None, None, None, None,
-        ).map_err(Error::from)
+        )
+        .map_err(Error::from)
         .map(|req| {
             let fut = self.request(req).and_then(|response| match response {
                 api_core::ListCoreV1NamespacedPodResponse::Ok(pod_list) => Ok(pod_list),
@@ -70,7 +73,8 @@ impl<T: TokenSource + Clone> Client<T> {
             });
 
             Either::A(fut)
-        }).unwrap_or_else(|err| Either::B(future::err(err)))
+        })
+        .unwrap_or_else(|err| Either::B(future::err(err)))
     }
 
     fn request<R: K8sResponse>(
@@ -84,7 +88,8 @@ impl<T: TokenSource + Clone> Client<T> {
                 .fold(BytesMut::new(), |mut buf, chunk| {
                     buf.extend_from_slice(&chunk);
                     future::ok::<_, HyperError>(buf)
-                }).map_err(Error::from)
+                })
+                .map_err(Error::from)
                 .and_then(move |buf| {
                     R::try_from_parts(status_code, &buf)
                         .map_err(Error::from)
@@ -110,7 +115,8 @@ impl<T: TokenSource + Clone> Client<T> {
                         .map(|pq| pq.as_str())
                         .unwrap_or(""),
                 )
-            }).map_err(Error::from)
+            })
+            .map_err(Error::from)
             .and_then(|url| url.as_ref().parse().map_err(Error::from))
             .and_then(|uri| self.config.token_source().get().map(|token| (uri, token)))
             .and_then(|(uri, token)| {
@@ -124,7 +130,8 @@ impl<T: TokenSource + Clone> Client<T> {
                 }
 
                 Ok(req)
-            }).map(|req| {
+            })
+            .map(|req| {
                 // NOTE: The req.map call below converts from Request<Vec<u8>> into a
                 // Request<Body>.
                 Either::A(
@@ -132,6 +139,7 @@ impl<T: TokenSource + Clone> Client<T> {
                         .request(req.map(From::from))
                         .map_err(Error::from),
                 )
-            }).unwrap_or_else(|err| Either::B(future::err(err)))
+            })
+            .unwrap_or_else(|err| Either::B(future::err(err)))
     }
 }
