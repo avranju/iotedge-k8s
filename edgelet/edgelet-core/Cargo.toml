@@ -27,5 +27,6 @@ edgelet-utils = { path = "../edgelet-utils" }
 base64 = "0.9"
 
 [features]
+default = ["runtime-docker"]
 runtime-docker = []
 runtime-kubernetes = []

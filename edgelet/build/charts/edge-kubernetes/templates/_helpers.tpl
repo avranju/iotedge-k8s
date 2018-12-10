@@ -41,7 +41,7 @@ agent:
   type: "docker"
   env: {}
   config:
-    image: "{{ .Values.edgeAgent.repository }}:{{ .Values.edgeAgent.tag }}"
+    image: "{{ .Values.edgeAgent.image.repository }}:{{ .Values.edgeAgent.image.tag }}"
     {{- if .Values.edgeAgent.registryCredentials }}
     auth:
       username: {{ .Values.edgeAgent.registryCredentials.username | quote }}

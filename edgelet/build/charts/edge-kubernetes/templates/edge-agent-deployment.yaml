@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "edge-kubernetes.fullname" . }}-edge-agent
+  namespace: {{ .Values.namespace | quote }}
+  labels:
+    app.kubernetes.io/name: {{ include "edge-kubernetes.name" . }}-edge-agent
+    helm.sh/chart: {{ include "edge-kubernetes.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "edge-kubernetes.name" . }}-edge-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "edge-kubernetes.name" . }}-edge-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        net.azure-devices.edge.module: "edgeagent"
+        net.azure-devices.edge.deviceid: {{ regexFind "DeviceId=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
+        net.azure-devices.edge.hub: {{ regexFind "HostName=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
+    spec:
+      serviceAccountName: "{{.Release.Name}}-service-account"
+      containers:
+        - name: {{ .Values.edgeAgent.containerName | quote }}
+          image: "{{ .Values.edgeAgent.image.repository }}:{{ .Values.edgeAgent.image.tag }}"
+          imagePullPolicy: {{ .Values.edgeAgent.image.pullPolicy }}
+          env:
+          - name: IOTEDGE_MODULEGENERATIONID
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: generationId
+          - name: EDGEDEVICEHOSTNAME
+            value: {{ .Values.edgeAgent.env.deviceHostName | quote }}
+          - name: NetworkId
+            value: {{ .Values.edgeAgent.env.networkId | quote }}
+          - name: IOTEDGE_AUTHSCHEME
+            value: {{ .Values.edgeAgent.env.authScheme | quote }}
+          - name: IOTEDGE_WORKLOADURI
+            value: "http://localhost:{{ .Values.iotedged.ports.workload }}"
+          - name: IOTEDGE_MANAGEMENTURI
+            value: "http://localhost:{{ .Values.iotedged.ports.management }}"
+          - name: IOTEDGE_MODULEID
+            value: "$edgeAgent"
+          - name: IOTEDGE_DEVICEID
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: deviceId
+          - name: IOTEDGE_IOTHUBHOSTNAME
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: iotHubHostName
+          - name: Mode
+            value: kubernetes
+          - name: IOTEDGE_APIVERSION
+            value: {{ .Values.iotedged.apiVersion | quote }}
+        - name: {{ .Chart.Name }}-edge-agent-iotedged-proxy
+          image: "{{ .Values.iotedgedProxy.image.repository }}:{{ .Values.iotedgedProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.iotedgedProxy.image.pullPolicy }}
+          volumeMounts:
+            - name: {{ .Chart.Name }}-edge-agent-iotedged-proxy-config
+              mountPath: /etc/traefik
+      {{- /* Render image pull secrets if they have been provided. */ -}}
+      {{- if .Values.registryCredentials }}
+      imagePullSecrets:
+        - name: {{ include "edge-kubernetes.fullname" . }}-regcreds
+      {{ end -}}
+      volumes:
+        - name: {{ .Chart.Name }}-edge-agent-iotedged-proxy-config
+          configMap:
+            name: {{ include "edge-kubernetes.fullname" . }}-iotedged-proxy-config
