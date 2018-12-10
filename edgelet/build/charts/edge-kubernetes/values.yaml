@@ -34,3 +34,9 @@ deviceConnectionString: "<ADD DEVICE CONNECTION STRING HERE>"
 
 # Deploy debug container?
 deployDebugContainer: true
+
+updateIdentityHook:
+  image:
+    repository: edgebuilds.azurecr.io/microsoft/update-identity-hook
+    tag: 0.1.0-linux-amd64
+    pullPolicy: Always

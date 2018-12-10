@@ -160,9 +160,8 @@ pub fn get_config() -> Result<Config<ValueToken>> {
 
 fn get_host() -> Result<Url> {
     let url = format!(
-        "https://{}:{}",
+        "https://{}:443",
         env::var("KUBERNETES_SERVICE_HOST")?,
-        env::var("KUBERNETES_SERVICE_PORT")?.parse::<u16>()?
     );
 
     Ok(url.parse()?)

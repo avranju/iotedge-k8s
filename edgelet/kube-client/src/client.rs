@@ -6,8 +6,8 @@ use futures::prelude::*;
 use hyper::client::{Client as HyperClient, HttpConnector};
 use hyper::{Body, Error as HyperError};
 use hyper_tls::HttpsConnector;
-use k8s_openapi::v1_12::api::apps::v1 as apps;
-use k8s_openapi::v1_12::api::core::v1 as api_core;
+use k8s_openapi::v1_10::api::apps::v1 as apps;
+use k8s_openapi::v1_10::api::core::v1 as api_core;
 use k8s_openapi::{http, Response as K8sResponse};
 
 use config::{Config, TokenSource};
@@ -32,30 +32,69 @@ impl<T: TokenSource + Clone> Client<T> {
         }
     }
 
-    pub fn create_deployment(
+    pub fn create_config_map(
         &self,
         namespace: &str,
-        deployment: &apps::Deployment,
-    ) -> impl Future<Item = apps::Deployment, Error = Error> {
-        apps::Deployment::create_apps_v1_namespaced_deployment(
-            namespace,
-            &deployment,
-            None,
-            None,
-            None,
+        config_map: &api_core::ConfigMap,
+    ) -> impl Future<Item = api_core::ConfigMap, Error = Error> {
+        api_core::ConfigMap::create_core_v1_namespaced_config_map(namespace, config_map, None)
+            .map_err(Error::from)
+            .map(|req| {
+                let fut = self.request(req).and_then(|response| match response {
+                    api_core::CreateCoreV1NamespacedConfigMapResponse::Ok(config_map)
+                    | api_core::CreateCoreV1NamespacedConfigMapResponse::Created(config_map)
+                    | api_core::CreateCoreV1NamespacedConfigMapResponse::Accepted(config_map) => {
+                        Ok(config_map)
+                    }
+                    _ => Err(Error::from(ErrorKind::Response)),
+                });
+
+                Either::A(fut)
+            })
+            .unwrap_or_else(|err| Either::B(future::err(err)))
+    }
+
+    pub fn delete_config_map(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> impl Future<Item = (), Error = Error> {
+        api_core::ConfigMap::delete_core_v1_namespaced_config_map(
+            name, namespace, None, None, None, None,
         )
         .map_err(Error::from)
         .map(|req| {
             let fut = self.request(req).and_then(|response| match response {
-                apps::CreateAppsV1NamespacedDeploymentResponse::Accepted(deployment)
-                | apps::CreateAppsV1NamespacedDeploymentResponse::Created(deployment)
-                | apps::CreateAppsV1NamespacedDeploymentResponse::Ok(deployment) => Ok(deployment),
+                api_core::DeleteCoreV1NamespacedConfigMapResponse::OkStatus(_)
+                | api_core::DeleteCoreV1NamespacedConfigMapResponse::OkValue(_) => Ok(()),
                 _ => Err(Error::from(ErrorKind::Response)),
             });
 
             Either::A(fut)
         })
         .unwrap_or_else(|err| Either::B(future::err(err)))
+    }
+
+    pub fn create_deployment(
+        &self,
+        namespace: &str,
+        deployment: &apps::Deployment,
+    ) -> impl Future<Item = apps::Deployment, Error = Error> {
+        apps::Deployment::create_apps_v1_namespaced_deployment(namespace, &deployment, None)
+            .map_err(Error::from)
+            .map(|req| {
+                let fut = self.request(req).and_then(|response| match response {
+                    apps::CreateAppsV1NamespacedDeploymentResponse::Accepted(deployment)
+                    | apps::CreateAppsV1NamespacedDeploymentResponse::Created(deployment)
+                    | apps::CreateAppsV1NamespacedDeploymentResponse::Ok(deployment) => {
+                        Ok(deployment)
+                    }
+                    _ => Err(Error::from(ErrorKind::Response)),
+                });
+
+                Either::A(fut)
+            })
+            .unwrap_or_else(|err| Either::B(future::err(err)))
     }
 
     pub fn list_pods(
