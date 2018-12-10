@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use failure::Fail;
+use log::info;
 use native_tls::{Certificate, Identity, TlsConnector};
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::PKey;
@@ -147,11 +148,15 @@ pub fn get_config() -> Result<Config<ValueToken>> {
     // try to load config file from home folder and if that
     // fails, well, then we're out of luck
     Config::<ValueToken>::in_cluster_config()
-        .map(Ok)
+        .map(|val| {
+            info!("Using in-cluster config");
+            Ok(val)
+        })
         .unwrap_or_else(|_| {
             dirs::home_dir()
                 .ok_or_else(|| Error::from(ErrorKind::MissingKubeConfig))
                 .and_then(|mut home_dir| {
+                    info!("Attempting to use config from ~/.kube/config file.");
                     home_dir.push(".kube/config");
                     Config::<ValueToken>::from_config_file(home_dir)
                 })
@@ -159,11 +164,7 @@ pub fn get_config() -> Result<Config<ValueToken>> {
 }
 
 fn get_host() -> Result<Url> {
-    let url = format!(
-        "https://{}:{}",
-        env::var("KUBERNETES_SERVICE_HOST")?,
-        env::var("KUBERNETES_SERVICE_PORT")?.parse::<u16>()?
-    );
+    let url = format!("https://{}:443", env::var("KUBERNETES_SERVICE_HOST")?,);
 
     Ok(url.parse()?)
 }

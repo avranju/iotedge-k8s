@@ -4,6 +4,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
 {
     using System;
     using System.Collections.Generic;
+    using static System.Environment;
+    using System.IO;
     using System.Threading.Tasks;
     using Autofac;
     using k8s;
@@ -51,10 +53,19 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             // IKubernetesClient
             builder.Register(c =>
                 {
-                    //var config = new KubernetesClientConfiguration { Host = "http://127.0.0.1:35456/" };
-                    //KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
-                    KubernetesClientConfiguration config = KubernetesClientConfiguration.InClusterConfig();
-                    var client = new Kubernetes(config);
+                    // load the k8s config from $HOME/.kube/config if its available
+                    KubernetesClientConfiguration kubeConfig;
+                    string kubeConfigPath = Path.Combine(Environment.GetFolderPath(SpecialFolder.UserProfile), ".kube", "config");
+                    if (File.Exists(kubeConfigPath))
+                    {
+                        kubeConfig = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+                    }
+                    else
+                    {
+                        kubeConfig = KubernetesClientConfiguration.InClusterConfig();
+                    }
+
+                    var client = new Kubernetes(kubeConfig);
                     return client;
                 })
                 .As<IKubernetes>()

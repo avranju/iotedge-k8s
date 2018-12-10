@@ -13,24 +13,51 @@ iotedged:
     management: 35000
     workload: 35001
 
+iotedgedProxy:
+  image:
+    repository: traefik
+    tag: v1.7-alpine
+    pullPolicy: Always
+
 # Edge Agent image configuration
 edgeAgent:
-  repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
-  tag: 18950689-linux-amd64
-  # Optional registry credentials for edge agent's image
+  containerName: edgeagent
+  image:
+    repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
+    tag: 19046686-linux-amd64
+    pullPolicy: Always
+  # Optional registry credentials for pulling edge agent image
   registryCredentials:
-    username: EdgeBuilds
+    username: edgebuilds
     password: "<PASSWORD HERE>"
-    serveraddress: edgebuilds.azurecr.io
+    serveraddress: "edgebuilds.azurecr.io"
+  env:
+    # This should typically be the name by which the loadbalancer that's sitting
+    # in front of the cluster is known by. Edge Hub for example will use this name
+    # as the "Common Name" when it requests a server cert from iotedged. So this
+    # should typically be DNS resolvable by downstream devices.
+    deviceHostName: "edge"
+    # This variable isn't really used in k8s mode.
+    networkId: "azure-iot-edge"
+    authScheme: "sasToken"
 
 # Registry credentials for module images
 registryCredentials:
   edgebuilds.azurecr.io:
-    username: EdgeBuilds
+    username: edgebuilds
     password: "<PASSWORD HERE>"
 
 # Azure IoT Hub device connection string
 deviceConnectionString: "<ADD DEVICE CONNECTION STRING HERE>"
 
+# The K8S namespace to use for creating all resources
+namespace: microsoft-azure-devices-edge
+
 # Deploy debug container?
-deployDebugContainer: true
+deployDebugContainer: false
+
+updateIdentityHook:
+  image:
+    repository: edgebuilds.azurecr.io/microsoft/update-identity-hook
+    tag: 1.0.5-linux-amd64
+    pullPolicy: Always

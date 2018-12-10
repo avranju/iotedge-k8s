@@ -13,7 +13,7 @@ DOCKER_DIR="$BUILD_DIR/docker"
 CARGO_HOME="$HOME/.cargo/"
 
 # Build the docker variables
-IMAGE_BASE_NAME="microsoft/azureiotedge-iotedged"
+IMAGE_BASE_NAME="edgebuilds.azurecr.io/microsoft/azureiotedge-iotedged"
 DEFAULT_VERSION=$(awk -F '~' -- '{ print $1 }' "$PROJECT_ROOT/version.txt")
 IMAGE_NAME="$IMAGE_BASE_NAME:$DEFAULT_VERSION-linux-amd64"
 DOCKER_IMAGE_FILE="$PROJECT_ROOT/build/linux/kubernetes/amd64/Dockerfile"
