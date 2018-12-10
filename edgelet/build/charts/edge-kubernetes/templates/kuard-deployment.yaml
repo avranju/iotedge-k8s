@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "edge-kubernetes.fullname" . }}-kuard
+  namespace: {{ .Values.namespace | quote }}
   labels:
     app.kubernetes.io/name: {{ include "edge-kubernetes.name" . }}-kuard
     helm.sh/chart: {{ include "edge-kubernetes.chart" . }}
@@ -23,6 +24,22 @@ spec:
       containers:
         - name: {{ .Chart.Name }}-kuard
           image: gcr.io/kuar-demo/kuard-amd64:1
+          env:
+          - name: IOTEDGE_MODULEGENERATIONID
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: generationId
+          - name: IOTEDGE_DEVICEID
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: deviceId
+          - name: IOTEDGE_IOTHUBHOSTNAME
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Release.Name }}-ea-config
+                key: iotHubHostName
           volumeMounts:
           - name: config
             mountPath: "/etc/iotedged"
