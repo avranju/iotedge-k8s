@@ -1,0 +1,9 @@
+[package]
+name = "iotedged-proxy"
+version = "0.1.0"
+authors = ["Azure IoT Edge Devs"]
+publish = false
+
+[dependencies]
+edgelet-http = { path = "../edgelet-http" }
+futures = "0.1"

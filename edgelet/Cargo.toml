@@ -18,6 +18,7 @@ members = [
     "iotedge",
     "iotedged",
     "iotedged-eventlog-messages",
+    "iotedged-proxy",
     "iothubservice",
     "kube-client",
     "management",
