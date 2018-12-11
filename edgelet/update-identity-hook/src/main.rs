@@ -30,6 +30,8 @@ const IOTHUB_API_VERSION: &str = "2017-11-08-preview";
 const EDGE_AGENT_MODULE_ID: &str = "$edgeAgent";
 
 fn main() {
+    env_logger::init();
+
     let matches = parse_args();
     let device_cs = matches.value_of("device-connection-string").unwrap();
     let kube_ns = matches.value_of("kubernetes-namespace").unwrap();

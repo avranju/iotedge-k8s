@@ -19,6 +19,7 @@ spec:
         app.kubernetes.io/instance: {{.Release.Name | quote }}
         helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
     spec:
+      serviceAccountName: "{{.Release.Name}}-service-account"
       restartPolicy: Never
       containers:
       - name: delete-ea-identity
@@ -27,6 +28,8 @@ spec:
         env:
         - name: RUST_BACKTRACE
           value: "1"
+        - name: RUST_LOG
+          value: "debug"
         command: ["/app/update-identity-hook"]
         args: [
           "--device-connection-string", {{ .Values.deviceConnectionString | quote }},

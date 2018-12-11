@@ -8,6 +8,7 @@ extern crate futures;
 extern crate hyper;
 extern crate hyper_tls;
 pub extern crate k8s_openapi;
+extern crate log;
 extern crate native_tls;
 extern crate openssl;
 extern crate serde;

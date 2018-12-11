@@ -9,6 +9,7 @@ use hyper_tls::HttpsConnector;
 use k8s_openapi::v1_10::api::apps::v1 as apps;
 use k8s_openapi::v1_10::api::core::v1 as api_core;
 use k8s_openapi::{http, Response as K8sResponse};
+use log::debug;
 
 use config::{Config, TokenSource};
 use error::{Error, ErrorKind};
@@ -46,7 +47,10 @@ impl<T: TokenSource + Clone> Client<T> {
                     | api_core::CreateCoreV1NamespacedConfigMapResponse::Accepted(config_map) => {
                         Ok(config_map)
                     }
-                    _ => Err(Error::from(ErrorKind::Response)),
+                    err => {
+                        debug!("Create config map failed with {:#?}", err);
+                        Err(Error::from(ErrorKind::Response))
+                    }
                 });
 
                 Either::A(fut)
@@ -130,6 +134,7 @@ impl<T: TokenSource + Clone> Client<T> {
                 })
                 .map_err(Error::from)
                 .and_then(move |buf| {
+                    debug!("HTTP Response:\n{}", ::std::str::from_utf8(&buf).unwrap());
                     R::try_from_parts(status_code, &buf)
                         .map_err(Error::from)
                         .map(|(result, _)| result)

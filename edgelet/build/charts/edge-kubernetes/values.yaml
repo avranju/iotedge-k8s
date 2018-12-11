@@ -38,5 +38,5 @@ deployDebugContainer: true
 updateIdentityHook:
   image:
     repository: edgebuilds.azurecr.io/microsoft/update-identity-hook
-    tag: 0.1.0-linux-amd64
+    tag: 1.0.5-linux-amd64
     pullPolicy: Always
