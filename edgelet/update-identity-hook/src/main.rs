@@ -23,7 +23,7 @@ use iothubservice::DeviceClient;
 use kube_client::k8s_openapi::v1_10::api::core::v1 as api_core;
 use kube_client::k8s_openapi::v1_10::apimachinery::pkg::apis::meta::v1 as api_meta;
 use kube_client::{get_config, Client as KubeClient};
-use provisioning::provisioning::{ManualProvisioning, Provision};
+use provisioning::provisioning::{ManualProvisioning, Provision, ProvisioningResult};
 use url::Url;
 
 const IOTHUB_API_VERSION: &str = "2017-11-08-preview";
@@ -47,7 +47,7 @@ fn main() {
 
 fn create(device_cs: &str, kube_ns: &str, release_name: &str) {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    let mut id_man = get_identity_manager(device_cs.to_string());
+    let (mut id_man, prov_result) = get_identity_manager(device_cs.to_string());
 
     // get the current edge agent identity to fetch the generation id
     let edge_agent = runtime
@@ -74,9 +74,14 @@ fn create(device_cs: &str, kube_ns: &str, release_name: &str) {
         "generationId".to_string(),
         edge_agent.generation_id().to_string(),
     );
+    data.insert("deviceId".to_string(), prov_result.device_id().to_string());
+    data.insert(
+        "iotHubHostName".to_string(),
+        prov_result.hub_name().to_string(),
+    );
 
     let mut meta: api_meta::ObjectMeta = Default::default();
-    meta.name = Some(format!("{}-ea-gen-id", release_name));
+    meta.name = Some(format!("{}-ea-config", release_name));
 
     let config_map = api_core::ConfigMap {
         api_version: Some("v1".to_string()),
@@ -96,7 +101,7 @@ fn delete(kube_ns: &str, release_name: &str) {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let kube_config = get_config().unwrap();
     let kube_client = KubeClient::new(kube_config);
-    let config_map_name = format!("{}-ea-gen-id", release_name);
+    let config_map_name = format!("{}-ea-config", release_name);
 
     runtime
         .block_on(kube_client.delete_config_map(&kube_ns, &config_map_name))
@@ -106,11 +111,14 @@ fn delete(kube_ns: &str, release_name: &str) {
 
 fn get_identity_manager(
     device_cs: String,
-) -> HubIdentityManager<
-    DerivedKeyStore<MemoryKey>,
-    HyperClient<HttpsConnector<HttpConnector>>,
-    MemoryKey,
-> {
+) -> (
+    HubIdentityManager<
+        DerivedKeyStore<MemoryKey>,
+        HyperClient<HttpsConnector<HttpConnector>>,
+        MemoryKey,
+    >,
+    ProvisioningResult,
+) {
     let prov = ManualProvisioning::new(&device_cs).unwrap();
     let hsm = MemoryKeyStore::new();
     let prov_result = prov.provision(hsm.clone()).wait().unwrap();
@@ -133,7 +141,10 @@ fn get_identity_manager(
     let device_client =
         DeviceClient::new(http_client, prov_result.device_id().to_string()).unwrap();
 
-    HubIdentityManager::new(key_store, device_client)
+    (
+        HubIdentityManager::new(key_store, device_client),
+        prov_result,
+    )
 }
 
 fn parse_args<'a>() -> ArgMatches<'a> {

@@ -13,15 +13,27 @@ iotedged:
     management: 35000
     workload: 35001
 
+iotedgedProxy:
+  image:
+    repository: traefik
+    tag: v1.7-alpine
+    pullPolicy: Always
+
 # Edge Agent image configuration
 edgeAgent:
-  repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
-  tag: 18950689-linux-amd64
-  # Optional registry credentials for edge agent's image
-  registryCredentials:
-    username: EdgeBuilds
-    password: "<PASSWORD HERE>"
-    serveraddress: edgebuilds.azurecr.io
+  image:
+    repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
+    tag: 18950689-linux-amd64
+    pullPolicy: Always
+  env:
+    # This should typically be the name by which the loadbalancer that's sitting
+    # in front of the cluster is known by. Edge Hub for example will use this name
+    # as the "Common Name" when it requests a server cert from iotedged. So this
+    # should typically be DNS resolvable by downstream devices.
+    deviceHostName: "edge"
+    # This variable isn't really used in k8s mode.
+    networkId: "azure-iot-edge"
+    authScheme: "sasToken"
 
 # Registry credentials for module images
 registryCredentials:
