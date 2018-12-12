@@ -53,6 +53,20 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly TypeSpecificSerDe<EdgeDeploymentDefinition> deploymentSerde;
         readonly JsonSerializerSettings crdSerializerSettings;
 
+        private string Getk8sNameFromModuleName(string moduleName)
+        {
+            switch (moduleName)
+            {
+                case CoreConstants.EdgeAgentModuleIdentityName:
+                    return CoreConstants.EdgeAgentModuleName.ToLower();
+                case CoreConstants.EdgeHubModuleIdentityName:
+                    return CoreConstants.EdgeHubModuleName.ToLower();
+                default:
+                    break;
+            }
+
+            return moduleName.ToLower();
+        }
         public EdgeOperator(string iotHubHostname, string deviceId, string edgeHostname, IKubernetes client)
         {
             this.iotHubHostname = Preconditions.CheckNonWhiteSpace(iotHubHostname, nameof(iotHubHostname));
@@ -266,7 +280,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             if (serviceList.Count > 0)
             {
                 // Selector: by module name and device name, also how we will label this puppy.
-                var objectMeta = new V1ObjectMeta(labels: labels, name: module.ModuleIdentity.ModuleId.ToLower());
+                var objectMeta = new V1ObjectMeta(labels: labels, name: this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId));
                 // How we manage this service is dependent on the port mappings user asks for.
                 string serviceType;
                 if (onlyExposedPorts)
@@ -425,7 +439,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     V1PodTemplateSpec v1PodSpec = this.GetPodFromModule(labels, module);
                     // Bundle into a deployment
                     string deploymentName = this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
-                        + module.ModuleIdentity.ModuleId.ToLower() + "-deployment";
+                        + this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId) + "-deployment";
                     // Deployment data
                     var deploymentMeta = new V1ObjectMeta(name: deploymentName, labels: labels);
 
@@ -588,7 +602,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                 var containerList = new List<V1Container>()
                 {
-                    new V1Container(module.ModuleIdentity.ModuleId.ToLower(),
+                    new V1Container(this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId),
                         env: env,
                         image: moduleImage,
                         volumeMounts: volumeMountList,
@@ -719,15 +733,15 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             envList.Add(new V1EnvVar(CoreConstants.ModuleIdVariableName, identity.ModuleId));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletApiVersionVariableName, CoreConstants.EdgeletWorkloadApiVersion));
 
-            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName))
+            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleIdentityName))
             {
                 envList.Add(new V1EnvVar(CoreConstants.ModeKey, CoreConstants.KubernetesMode));
                 envList.Add(new V1EnvVar(CoreConstants.EdgeletManagementUriVariableName, EdgeOperator.ManagementUri));
                 envList.Add(new V1EnvVar(CoreConstants.NetworkIdKey, "azure-iot-edge"));
             }
 
-            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName) ||
-                string.Equals(identity.ModuleId, CoreConstants.EdgeHubModuleName))
+            if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleIdentityName) ||
+                string.Equals(identity.ModuleId, CoreConstants.EdgeHubModuleIdentityName))
             {
                 envList.Add(new V1EnvVar(CoreConstants.EdgeDeviceHostNameKey, this.edgeHostname));
             }
