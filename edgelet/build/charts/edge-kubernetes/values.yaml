@@ -25,6 +25,11 @@ edgeAgent:
     repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
     tag: 18950689-linux-amd64
     pullPolicy: Always
+  # Optional registry credentials for pulling edge agent image
+  registryCredentials:
+    username: EdgeBuilds
+    password: "<PASSWORD HERE>"
+    serveraddress: "edgebuilds.azurecr.io"
   env:
     # This should typically be the name by which the loadbalancer that's sitting
     # in front of the cluster is known by. Edge Hub for example will use this name
