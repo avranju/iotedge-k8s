@@ -802,11 +802,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         Option<V1ContainerStatus> GetContainerByName(string name, V1Pod pod)
         {
+            string containerName = this.Getk8sNameFromModuleName(name);
             if (pod.Status?.ContainerStatuses != null)
             {
                 foreach (var status in pod.Status.ContainerStatuses)
                 {
-                    if (string.Equals(status.Name, name, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(status.Name, containerName, StringComparison.OrdinalIgnoreCase))
                     {
                         return Option.Some(status);
                     }
