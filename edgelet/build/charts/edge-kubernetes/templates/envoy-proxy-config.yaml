@@ -63,15 +63,15 @@ data:
           type: LOGICAL_DNS
           hosts:
             - socket_address:
-                address: iotedged.microsoft-azure-devices-edge.svc.cluster.local
-                port_value: 35000
+                address: http://{{ .Values.iotedged.service.name }}
+                port_value: {{ .Values.iotedged.ports.workload }}
         - name: service_management
           connect_timeout: 0.25s
           type: LOGICAL_DNS
           hosts:
             - socket_address:
-                address: iotedged.microsoft-azure-devices-edge.svc.cluster.local
-                port_value: 35001
+                address: http://{{ .Values.iotedged.service.name }}
+                port_value: {{ .Values.iotedged.ports.management }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -118,6 +118,6 @@ data:
           type: LOGICAL_DNS
           hosts:
             - socket_address:
-                address: iotedged.microsoft-azure-devices-edge.svc.cluster.local
-                port_value: 35000
+                address: http://{{ .Values.iotedged.service.name }}
+                port_value: {{ .Values.iotedged.ports.workload }}
 ---
