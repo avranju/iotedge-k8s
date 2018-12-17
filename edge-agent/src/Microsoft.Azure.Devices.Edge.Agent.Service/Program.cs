@@ -129,9 +129,12 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
                         deviceId = configuration.GetValue<string>(Constants.DeviceIdVariableName);
                         moduleId = configuration.GetValue(Constants.ModuleIdVariableName, Constants.EdgeAgentModuleIdentityName);
                         moduleGenerationId = configuration.GetValue<string>(Constants.EdgeletModuleGenerationIdVariableName);
-                        
+                        string proxyImage = configuration.GetValue<string>(Constants.ProxyImageEnvKey);
+                        string proxyConfigPath = configuration.GetValue<string>(Constants.ProxyConfigPathEnvKey);
+                        string proxyConfigVolumeName = configuration.GetValue<string>(Constants.ProxyConfigVolumeEnvKey);
+
                         builder.RegisterModule(new AgentModule(maxRestartCount, intensiveCareTime, coolOffTimeUnitInSeconds, usePersistentStorage, storagePath, Option.Some(new Uri(workloadUri)), moduleId, Option.Some(moduleGenerationId)));
-                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
+                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, proxyImage, proxyConfigPath, proxyConfigVolumeName, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
                         break;
 
                     default:

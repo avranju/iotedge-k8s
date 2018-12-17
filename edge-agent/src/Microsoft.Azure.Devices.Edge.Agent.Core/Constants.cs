@@ -44,6 +44,12 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
 
         public const string EdgeModuleHubServerCertificateFileKey = "EdgeModuleHubServerCertificateFile";
 
+        public const string ProxyImageEnvKey = "ProxyImage";
+
+        public const string ProxyConfigPathEnvKey = "ProxyConfigPath";
+
+        public const string ProxyConfigVolumeEnvKey = "ProxyConfigVolume";
+
         public const string Unknown = "Unknown";
 
         public const string UpstreamProtocolKey = "UpstreamProtocol";
