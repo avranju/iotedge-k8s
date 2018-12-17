@@ -3,6 +3,7 @@
 extern crate base64;
 extern crate bytes;
 extern crate dirs;
+extern crate edgelet_http;
 extern crate failure;
 extern crate futures;
 extern crate hyper;

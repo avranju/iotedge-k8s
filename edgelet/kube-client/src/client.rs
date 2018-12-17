@@ -1,36 +1,33 @@
 // Copyright (c) Microsoft. All rights reserved.
 
 use bytes::BytesMut;
+use edgelet_http::UrlConnector;
+use failure::ResultExt;
 use futures::future::{self, Either};
 use futures::prelude::*;
-use hyper::client::{Client as HyperClient, HttpConnector};
+use hyper::client::Client as HyperClient;
 use hyper::{Body, Error as HyperError};
-use hyper_tls::HttpsConnector;
 use k8s_openapi::v1_10::api::apps::v1 as apps;
 use k8s_openapi::v1_10::api::core::v1 as api_core;
 use k8s_openapi::{http, Response as K8sResponse};
 use log::debug;
 
 use config::{Config, TokenSource};
-use error::{Error, ErrorKind};
+use error::{Error, ErrorKind, Result};
 
 #[derive(Clone)]
 pub struct Client<T: Clone> {
     config: Config<T>,
-    client: HyperClient<HttpsConnector<HttpConnector>>,
+    client: HyperClient<UrlConnector>,
 }
 
 impl<T: TokenSource + Clone> Client<T> {
-    pub fn new(config: Config<T>) -> Client<T> {
-        let mut http = HttpConnector::new(4);
-        // if we don't do this then the HttpConnector rejects the "https" scheme
-        http.enforce_http(false);
-
-        let connector = (http, config.tls_connector().clone()).into();
-        Client {
+    pub fn new(config: Config<T>) -> Result<Client<T>> {
+        let connector = UrlConnector::new(config.host()).context(ErrorKind::Initialization)?;
+        Ok(Client {
             config,
             client: HyperClient::builder().build::<_, Body>(connector),
-        }
+        })
     }
 
     pub fn create_config_map(

@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use edgelet_http::UrlConnector;
 use failure::Fail;
 use log::info;
 use native_tls::{Certificate, Identity, TlsConnector};
@@ -37,7 +38,7 @@ pub struct Config<T: Clone> {
     host: Url,
     api_path: String,
     token_source: T,
-    tls_connector: TlsConnector,
+    connector: UrlConnector,
 }
 
 impl<T: TokenSource + Clone> Config<T> {
@@ -45,13 +46,13 @@ impl<T: TokenSource + Clone> Config<T> {
         host: Url,
         api_path: String,
         token_source: T,
-        tls_connector: TlsConnector,
+        connector: UrlConnector,
     ) -> Config<T> {
         Config {
             host,
             api_path,
             token_source,
-            tls_connector,
+            connector,
         }
     }
 
@@ -138,8 +139,8 @@ impl<T: TokenSource + Clone> Config<T> {
         &self.token_source
     }
 
-    pub fn tls_connector(&self) -> &TlsConnector {
-        &self.tls_connector
+    pub fn connector(&self) -> &TlsConnector {
+        &self.connector
     }
 }
 
@@ -175,11 +176,11 @@ fn get_token_and_tls_connector() -> Result<(ValueToken, TlsConnector)> {
 
     let token = fs::read_to_string(TOKEN_FILE)?;
     let root_ca = Certificate::from_pem(fs::read_to_string(ROOT_CA_FILE)?.as_bytes())?;
-    let tls_connector = TlsConnector::builder()
+    let connector = TlsConnector::builder()
         .add_root_certificate(root_ca)
         .build()?;
 
-    Ok((ValueToken(Some(token)), tls_connector))
+    Ok((ValueToken(Some(token)), connector))
 }
 
 fn identity_from_cert_key(user_name: &str, cert: &[u8], key: &[u8]) -> Result<Identity> {

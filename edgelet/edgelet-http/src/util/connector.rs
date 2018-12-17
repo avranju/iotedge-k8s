@@ -22,6 +22,7 @@ use hyper::client::HttpConnector;
 use hyper::Uri;
 #[cfg(windows)]
 use hyper_named_pipe::{PipeConnector, Uri as PipeUri};
+use hyper_tls::{HttpsConnector, MaybeHttpsStream};
 #[cfg(unix)]
 use hyperlocal::{UnixConnector, Uri as HyperlocalUri};
 #[cfg(windows)]
@@ -36,9 +37,11 @@ const UNIX_SCHEME: &str = "unix";
 #[cfg(windows)]
 const PIPE_SCHEME: &str = "npipe";
 const HTTP_SCHEME: &str = "http";
+const HTTPS_SCHEME: &str = "https";
 
 pub enum UrlConnector {
     Http(HttpConnector),
+    Https(HttpsConnector<HttpConnector>),
     #[cfg(windows)]
     Pipe(PipeConnector),
     Unix(UnixConnector),
@@ -68,6 +71,16 @@ impl UrlConnector {
                 //       this time.
                 Ok(UrlConnector::Http(HttpConnector::new(4)))
             }
+
+            HTTPS_SCHEME => {
+                // NOTE: We are defaulting to using 4 threads here. Is this a good
+                //       default? This is what the "hyper" crate uses by default at
+                //       this time.
+                Ok(UrlConnector::Https(
+                    HttpsConnector::new(4).context(ErrorKind::Initialization)?,
+                ))
+            }
+
             _ => Err(ErrorKind::InvalidUrlWithReason(
                 url.to_string(),
                 InvalidUrlReason::InvalidScheme,
@@ -86,7 +99,7 @@ impl UrlConnector {
                 })?
                 .into()),
             UNIX_SCHEME => Ok(HyperlocalUri::new(base_path, &path).into()),
-            HTTP_SCHEME => Ok(Url::parse(base_path)
+            HTTP_SCHEME | HTTPS_SCHEME => Ok(Url::parse(base_path)
                 .and_then(|base| base.join(path))
                 .and_then(|url| url.as_str().parse().map_err(|_| ParseError::IdnaError))
                 .with_context(|_| ErrorKind::MalformedUrl {
@@ -112,6 +125,7 @@ impl Connect for UrlConnector {
         #[cfg_attr(feature = "cargo-clippy", allow(match_same_arms))]
         match (self, dst.scheme()) {
             (UrlConnector::Http(_), HTTP_SCHEME) => (),
+            (UrlConnector::Https(_), HTTP_SCHEME) => (),
 
             #[cfg(windows)]
             (UrlConnector::Pipe(_), PIPE_SCHEME) => (),
@@ -128,6 +142,15 @@ impl Connect for UrlConnector {
 
         match self {
             UrlConnector::Http(connector) => {
+                Box::new(connector.connect(dst).and_then(|(tcp_stream, connected)| {
+                    Ok((
+                        StreamSelector::Tcp(MaybeHttpsStream::Http(tcp_stream)),
+                        connected,
+                    ))
+                })) as Self::Future
+            }
+
+            UrlConnector::Https(connector) => {
                 Box::new(connector.connect(dst).and_then(|(tcp_stream, connected)| {
                     Ok((StreamSelector::Tcp(tcp_stream), connected))
                 })) as Self::Future

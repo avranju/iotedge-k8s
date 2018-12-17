@@ -3,6 +3,7 @@
 use std::io;
 
 use futures::{Poll, Stream};
+use hyper_tls::MaybeHttpsStream;
 use tokio::net::TcpListener;
 #[cfg(unix)]
 use tokio_uds::UnixListener;
@@ -31,7 +32,10 @@ impl Stream for Incoming {
                     Err(e) => return Err(e),
                 };
                 accept.map(|(stream, addr)| {
-                    Some((StreamSelector::Tcp(stream), IncomingSocketAddr::Tcp(addr)))
+                    Some((
+                        StreamSelector::Tcp(MaybeHttpsStream::Http(stream)),
+                        IncomingSocketAddr::Tcp(addr),
+                    ))
                 })
             }
             Incoming::Unix(ref mut listener) => {

@@ -10,6 +10,7 @@ use std::path::Path;
 use bytes::{Buf, BufMut};
 use edgelet_core::pid::Pid;
 use futures::Poll;
+use hyper_tls::MaybeHttpsStream;
 #[cfg(windows)]
 use mio_uds_windows::net::SocketAddr as UnixSocketAddr;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -32,7 +33,7 @@ pub use self::connector::UrlConnector;
 pub use self::incoming::Incoming;
 
 pub enum StreamSelector {
-    Tcp(TcpStream),
+    Tcp(MaybeHttpsStream<TcpStream>),
     #[cfg(windows)]
     Pipe(PipeStream),
     Unix(UnixStream),
@@ -106,7 +107,10 @@ impl AsyncRead for StreamSelector {
 impl AsyncWrite for StreamSelector {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         match *self {
-            StreamSelector::Tcp(ref mut stream) => <&TcpStream>::shutdown(&mut &*stream),
+            StreamSelector::Tcp(ref mut stream) => match stream {
+                MaybeHttpsStream::Http(stream) => stream.shutdown(),
+                MaybeHttpsStream::Https(stream) => stream.shutdown(),
+            },
             #[cfg(windows)]
             StreamSelector::Pipe(ref mut stream) => PipeStream::shutdown(stream),
             StreamSelector::Unix(ref mut stream) => <&UnixStream>::shutdown(&mut &*stream),

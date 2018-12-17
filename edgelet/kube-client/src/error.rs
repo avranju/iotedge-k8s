@@ -28,36 +28,54 @@ pub struct Error {
 pub enum ErrorKind {
     #[fail(display = "An IO error occurred.")]
     Io,
+
     #[fail(display = "A native TLS error occurred.")]
     NativeTls,
+
     #[fail(display = "An error occurred while reading an environment variable.")]
     EnvVar,
+
     #[fail(display = "Parse error")]
     Parse,
+
     #[fail(display = "Serde error")]
     Serde,
+
     #[fail(display = "Could not locate a kubernetes configuration file.")]
     MissingKubeConfig,
+
     #[fail(display = "Missing or invalid Kubernetes context in .kube/config file.")]
     MissingOrInvalidKubeContext,
+
     #[fail(display = "Missing user configuration in .kube/config file.")]
     MissingUser,
+
     #[fail(display = "Base64 decode error")]
     Base64Decode,
+
     #[fail(display = "Openssl error")]
     Openssl,
+
     #[fail(display = "Both file and data missing")]
     MissingData,
+
     #[fail(display = "Hyper HTTP error")]
     Hyper,
+
     #[fail(display = "Invalid URI")]
     Uri,
+
     #[fail(display = "Invalid HTTP header value")]
     HeaderValue,
+
     #[fail(display = "HTTP request error")]
     Request,
+
     #[fail(display = "HTTP response error")]
     Response,
+
+    #[fail(display = "Could not initialize kube client")]
+    Initialization,
 }
 
 impl Fail for Error {
