@@ -31,13 +31,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
     public class EdgeOperator : IKubernetesOperator, IRuntimeInfoProvider
     {
-        public const string WorkloadUri = "unix:///var/run/iotedge/workload.sock";
         public const string SocketDir = "/var/run/iotedge";
         public const string SocketVolumeName = "workload";
-        public const string ManagementUri = "unix:///var/run/iotedge/mgmt.sock";
         public const string EdgeHubHostname = "edgehub";
         public const string ConfigVolumeName = "config-volume";
-        public const string ProxyConfigDir = "/etc/envoy";
 
         readonly IKubernetes client;
 
@@ -50,6 +47,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly string edgeHostname;
         readonly string resourceName;
         readonly string deploymentSelector;
+        readonly string proxyImage;
+        readonly string proxyConfigPath;
+        readonly string proxyConfigVolumeName;
+        readonly Uri workloadUri;
+        readonly Uri managementUri;
         readonly TypeSpecificSerDe<EdgeDeploymentDefinition> deploymentSerde;
         readonly JsonSerializerSettings crdSerializerSettings;
 
@@ -67,11 +69,25 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             return moduleName.ToLower();
         }
-        public EdgeOperator(string iotHubHostname, string deviceId, string edgeHostname, IKubernetes client)
+        public EdgeOperator(
+            string iotHubHostname,
+            string deviceId,
+            string edgeHostname,
+            string proxyImage,
+            string proxyConfigPath,
+            string proxyConfigVolumeName,
+            Uri workloadUri,
+            Uri managementUri,
+            IKubernetes client)
         {
             this.iotHubHostname = Preconditions.CheckNonWhiteSpace(iotHubHostname, nameof(iotHubHostname));
             this.deviceId = Preconditions.CheckNonWhiteSpace(deviceId, nameof(deviceId));
             this.edgeHostname = Preconditions.CheckNonWhiteSpace(edgeHostname, nameof(edgeHostname));
+            this.proxyImage = Preconditions.CheckNonWhiteSpace(proxyImage, nameof(proxyImage));
+            this.proxyConfigPath = Preconditions.CheckNonWhiteSpace(proxyConfigPath, nameof(proxyConfigPath));
+            this.proxyConfigVolumeName = Preconditions.CheckNonWhiteSpace(proxyConfigVolumeName, nameof(proxyConfigVolumeName));
+            this.workloadUri = Preconditions.CheckNotNull(workloadUri, nameof(workloadUri));
+            this.managementUri = Preconditions.CheckNotNull(managementUri, nameof(managementUri));
             this.client = Preconditions.CheckNotNull(client, nameof(client));
             this.moduleRuntimeInfos = new Dictionary<string, ModuleRuntimeInfo>();
             this.moduleLock = new AsyncLock();
@@ -611,7 +627,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     // TODO: Add Proxy container here - configmap for proxy configuration.
                     new V1Container("proxy",
                         env:env, // TODO: check these for validity for proxy.
-                        image: Constants.proxyImage,
+                        image: this.proxyImage,
                         volumeMounts: proxyMounts)
                 };
 
@@ -640,10 +656,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
         {
-            V1ConfigMapVolumeSource v1ConfigMapVolumeSource = string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleName)
-                ? new V1ConfigMapVolumeSource(null, null, Constants.AgentConfigMap, null)
-                : new V1ConfigMapVolumeSource(null, null, Constants.ModuleConfigMap, null);
-
+            var v1ConfigMapVolumeSource = new V1ConfigMapVolumeSource(null, null, this.proxyConfigVolumeName, null);
 
             var volumeList = new List<V1Volume>
             {
@@ -655,7 +668,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 new V1VolumeMount(SocketDir,SocketVolumeName)
             };
             var volumeMountList = new List<V1VolumeMount>(proxyMountList);
-            proxyMountList.Add(new V1VolumeMount(ProxyConfigDir, ConfigVolumeName));
+            proxyMountList.Add(new V1VolumeMount(this.proxyConfigPath, ConfigVolumeName));
 
 
             if ((moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds == null) && (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts == null))
@@ -725,7 +738,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             envList.Add(new V1EnvVar(CoreConstants.IotHubHostnameVariableName, this.iotHubHostname));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletAuthSchemeVariableName, "sasToken"));
             envList.Add(new V1EnvVar(Logger.RuntimeLogLevelEnvKey, Logger.GetLogLevel().ToString()));
-            envList.Add(new V1EnvVar(CoreConstants.EdgeletWorkloadUriVariableName, EdgeOperator.WorkloadUri));
+            envList.Add(new V1EnvVar(CoreConstants.EdgeletWorkloadUriVariableName, this.workloadUri.AbsolutePath));
             envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletModuleGenerationIdVariableName, identity.Credentials.ModuleGenerationId));
             envList.Add(new V1EnvVar(CoreConstants.DeviceIdVariableName, this.deviceId)); // could also get this from module identity
@@ -735,8 +748,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleIdentityName))
             {
                 envList.Add(new V1EnvVar(CoreConstants.ModeKey, CoreConstants.KubernetesMode));
-                envList.Add(new V1EnvVar(CoreConstants.EdgeletManagementUriVariableName, EdgeOperator.ManagementUri));
+                envList.Add(new V1EnvVar(CoreConstants.EdgeletManagementUriVariableName, this.managementUri.AbsolutePath));
                 envList.Add(new V1EnvVar(CoreConstants.NetworkIdKey, "azure-iot-edge"));
+                envList.Add(new V1EnvVar(CoreConstants.ProxyImageEnvKey, this.proxyImage));
+                envList.Add(new V1EnvVar(CoreConstants.ProxyConfigPathEnvKey, this.proxyConfigPath));
+                envList.Add(new V1EnvVar(CoreConstants.ProxyConfigVolumeEnvKey, this.proxyConfigVolumeName));
             }
 
             if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleIdentityName) ||
