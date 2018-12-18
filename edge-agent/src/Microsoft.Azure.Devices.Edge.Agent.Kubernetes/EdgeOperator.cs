@@ -430,6 +430,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }).ToList();
         }
 
+        string DeploymentName(string moduleId) => this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
+            + this.Getk8sNameFromModuleName(moduleId);
+
         async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
         {
             // PUll current configuration from annotations.
@@ -464,8 +467,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     }
 
                     // Bundle into a deployment
-                    string deploymentName = this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
-                        + this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId);
+                    string deploymentName = this.DeploymentName(module.ModuleIdentity.ModuleId);
                     // Deployment data
                     var deploymentMeta = new V1ObjectMeta(name: deploymentName, labels: labels);
 
@@ -540,8 +542,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     {
                         V1Deployment current = currentDeploymentsList.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
                         V1Deployment currentCreated = currentV1Deployments.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
-                        if (V1DeploymentEx.DeploymentEquals(currentCreated, d))
+                        // Exception for EdgeAgent: only compare container images.
+                        if (V1DeploymentEx.DeploymentEquals(currentCreated, d) ||
+                            (string.Equals(d.Metadata.Name, CoreConstants.EdgeAgentModuleName) && V1DeploymentEx.ImageEquals(currentCreated, d)))
+                        {
                             return;
+                        }
                         string creationString = JsonConvert.SerializeObject(d);
                         d.Metadata.ResourceVersion = current.Metadata.ResourceVersion;
                         if (d.Metadata.Annotations == null)
