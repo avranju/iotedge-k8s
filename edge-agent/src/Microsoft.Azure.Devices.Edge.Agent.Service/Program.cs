@@ -132,9 +132,10 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
                         string proxyImage = configuration.GetValue<string>(Constants.ProxyImageEnvKey);
                         string proxyConfigPath = configuration.GetValue<string>(Constants.ProxyConfigPathEnvKey);
                         string proxyConfigVolumeName = configuration.GetValue<string>(Constants.ProxyConfigVolumeEnvKey);
+                        string serviceAccountName = configuration.GetValue<string>(Constants.EdgeAgentServiceAccountName);
 
                         builder.RegisterModule(new AgentModule(maxRestartCount, intensiveCareTime, coolOffTimeUnitInSeconds, usePersistentStorage, storagePath, Option.Some(new Uri(workloadUri)), moduleId, Option.Some(moduleGenerationId)));
-                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, proxyImage, proxyConfigPath, proxyConfigVolumeName, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
+                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, proxyImage, proxyConfigPath, proxyConfigVolumeName, serviceAccountName, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
                         break;
 
                     default:
@@ -178,7 +179,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
                 Option<Agent> agentOption = Option.None<Agent>();
 
                 try
-                {                    
+                {
                     Agent agent = await container.Resolve<Task<Agent>>();
                     agentOption = Option.Some(agent);
                     while (!cts.Token.IsCancellationRequested)
