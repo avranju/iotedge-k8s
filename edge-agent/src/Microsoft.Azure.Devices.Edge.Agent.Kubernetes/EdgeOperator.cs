@@ -50,6 +50,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly string proxyImage;
         readonly string proxyConfigPath;
         readonly string proxyConfigVolumeName;
+        readonly string serviceAccountName;
         readonly Uri workloadUri;
         readonly Uri managementUri;
         readonly TypeSpecificSerDe<EdgeDeploymentDefinition> deploymentSerde;
@@ -69,6 +70,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             return moduleName.ToLower();
         }
+
         public EdgeOperator(
             string iotHubHostname,
             string deviceId,
@@ -76,6 +78,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             string proxyImage,
             string proxyConfigPath,
             string proxyConfigVolumeName,
+            string serviceAccountName,
             Uri workloadUri,
             Uri managementUri,
             IKubernetes client)
@@ -86,6 +89,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             this.proxyImage = Preconditions.CheckNonWhiteSpace(proxyImage, nameof(proxyImage));
             this.proxyConfigPath = Preconditions.CheckNonWhiteSpace(proxyConfigPath, nameof(proxyConfigPath));
             this.proxyConfigVolumeName = Preconditions.CheckNonWhiteSpace(proxyConfigVolumeName, nameof(proxyConfigVolumeName));
+            this.serviceAccountName = Preconditions.CheckNonWhiteSpace(serviceAccountName, nameof(serviceAccountName));
             this.workloadUri = Preconditions.CheckNotNull(workloadUri, nameof(workloadUri));
             this.managementUri = Preconditions.CheckNotNull(managementUri, nameof(managementUri));
             this.client = Preconditions.CheckNotNull(client, nameof(client));
@@ -370,7 +374,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                             // Delete any services.
                             var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
                             await Task.WhenAll(removeServiceTasks);
-                            var removeDeploymentTasks = currentDeployments.Items.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace));
+                            var removeDeploymentTasks = currentDeployments.Items.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
                             await Task.WhenAll(removeDeploymentTasks);
                         }
                         break;
@@ -452,14 +456,22 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                     // Create a Pod for each module, and a proxy container.
                     V1PodTemplateSpec v1PodSpec = this.GetPodFromModule(labels, module);
+
+                    // if this is the edge agent's deployment then it needs to run under a specific service account
+                    if (module.ModuleIdentity.ModuleId == CoreConstants.EdgeAgentModuleIdentityName)
+                    {
+                        v1PodSpec.Spec.ServiceAccountName = this.serviceAccountName;
+                    }
+
                     // Bundle into a deployment
                     string deploymentName = this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
-                        + this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId) + "-deployment";
+                        + this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId);
                     // Deployment data
                     var deploymentMeta = new V1ObjectMeta(name: deploymentName, labels: labels);
 
                     var selector = new V1LabelSelector(matchLabels: labels);
                     var deploymentSpec = new V1DeploymentSpec(replicas: 1, selector: selector, template: v1PodSpec);
+
                     desiredDeployments.Add(new V1Deployment(metadata: deploymentMeta, spec: deploymentSpec));
 
                     // Make the client call for the deployment
@@ -561,15 +573,33 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 });
 
             // Remove the old
-            var removeServiceTasks = servicesRemoved.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
+            var removeServiceTasks = servicesRemoved.Select(i =>
+            {
+                Events.DeletingService(i);
+                return this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace);
+            });
             await Task.WhenAll(removeServiceTasks);
-            var removeDeploymentTasks = deploymentsRemoved.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace));
+
+            var removeDeploymentTasks = deploymentsRemoved.Select(d =>
+            {
+                Events.DeletingDeployment(d);
+                return this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace);
+            });
             await Task.WhenAll(removeDeploymentTasks);
 
             // Create the new.
-            var createServiceTasks = newServices.Select(s => this.client.CreateNamespacedServiceAsync(s, Constants.k8sNamespace));
+            var createServiceTasks = newServices.Select(s =>
+            {
+                Events.CreatingService(s);
+                return this.client.CreateNamespacedServiceAsync(s, Constants.k8sNamespace);
+            });
             await Task.WhenAll(createServiceTasks);
-            var createDeploymentTasks = newDeployments.Select(deployment => this.client.CreateNamespacedDeploymentAsync(deployment, Constants.k8sNamespace));
+
+            var createDeploymentTasks = newDeployments.Select(deployment =>
+            {
+                Events.CreatingDeployment(deployment);
+                return this.client.CreateNamespacedDeploymentAsync(deployment, Constants.k8sNamespace);
+            });
             await Task.WhenAll(createDeploymentTasks);
 
             // Update the existing - should only do this when different.
@@ -753,6 +783,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 envList.Add(new V1EnvVar(CoreConstants.ProxyImageEnvKey, this.proxyImage));
                 envList.Add(new V1EnvVar(CoreConstants.ProxyConfigPathEnvKey, this.proxyConfigPath));
                 envList.Add(new V1EnvVar(CoreConstants.ProxyConfigVolumeEnvKey, this.proxyConfigVolumeName));
+                envList.Add(new V1EnvVar(CoreConstants.EdgeAgentServiceAccountName, this.serviceAccountName));
             }
 
             if (string.Equals(identity.ModuleId, CoreConstants.EdgeAgentModuleIdentityName) ||
@@ -840,14 +871,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         (int, Option<DateTime>, Option<DateTime>, string image) GetRuntimedata(V1ContainerStatus status)
         {
-            if (status.LastState?.Running != null)
+            if (status?.LastState?.Running != null)
             {
                 if (status.LastState.Running.StartedAt.HasValue)
                 {
                     return (0, Option.Some(status.LastState.Running.StartedAt.Value), Option.None<DateTime>(), status.Image);
                 }
             }
-            else if (status.LastState?.Terminated != null)
+            else if (status?.LastState?.Terminated != null)
             {
                 if (status.LastState.Terminated.StartedAt.HasValue &&
                     status.LastState.Terminated.FinishedAt.HasValue)
@@ -893,6 +924,31 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 UpdateDeployment,
                 CreateDeployment,
                 NullListResponse,
+                DeletingService,
+                DeletingDeployment,
+                CreatingDeployment,
+                CreatingService,
+                ReplacingDeployment,
+            }
+
+            public static void DeletingService(V1Service service)
+            {
+                Log.LogInformation((int)EventIds.DeletingService, $"Deleting service {service.Metadata.Name}");
+            }
+
+            public static void CreatingService(V1Service service)
+            {
+                Log.LogInformation((int)EventIds.CreatingService, $"Creating service {service.Metadata.Name}");
+            }
+
+            public static void DeletingDeployment(V1Deployment deployment)
+            {
+                Log.LogInformation((int)EventIds.DeletingDeployment, $"Deleting deployment {deployment.Metadata.Name}");
+            }
+
+            public static void CreatingDeployment(V1Deployment deployment)
+            {
+                Log.LogInformation((int)EventIds.CreatingDeployment, $"Creating deployment {deployment.Metadata.Name}");
             }
 
             public static void InvalidModuleType(KubernetesModule module)
@@ -952,12 +1008,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             public static void UpdateService(string name)
             {
-                Log.LogDebug((int)EventIds.UpdateService, $"Updating service '{name}'");
+                Log.LogDebug((int)EventIds.UpdateService, $"Updating service object '{name}'");
             }
 
             public static void CreateService(string name)
             {
-                Log.LogDebug((int)EventIds.CreateService, $"Creating service '{name}'");
+                Log.LogDebug((int)EventIds.CreateService, $"Creating service object '{name}'");
             }
             public static void RemoveDeployment(string name)
             {

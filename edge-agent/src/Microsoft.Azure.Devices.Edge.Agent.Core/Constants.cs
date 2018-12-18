@@ -68,6 +68,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Core
 
         public const string ModuleIdVariableName = "IOTEDGE_MODULEID";
 
+        public const string EdgeAgentServiceAccountName = "ServiceAccountName";
+
         public const string EdgeletAuthSchemeVariableName = "IOTEDGE_AUTHSCHEME";
 
         public const string EdgeletModuleGenerationIdVariableName = "IOTEDGE_MODULEGENERATIONID";
