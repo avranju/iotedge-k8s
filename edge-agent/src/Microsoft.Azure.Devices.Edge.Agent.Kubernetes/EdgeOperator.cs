@@ -21,7 +21,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using Newtonsoft.Json;
     using Newtonsoft.Json.Serialization;
     using Microsoft.Extensions.Logging;
-    using DockerModels =  global::Docker.DotNet.Models;
+    using DockerModels = global::Docker.DotNet.Models;
     using AgentDocker = Microsoft.Azure.Devices.Edge.Agent.Docker;
     using Constants = Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Constants;
     using CoreConstants = Microsoft.Azure.Devices.Edge.Agent.Core.Constants;
@@ -154,38 +154,38 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             // is an acceptable fate if these tasks fail.
 
             // Pod watching for module runtime status.
-            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith( async podListRespTask =>
-            {
-                if (podListRespTask != null)
-                {
-                    HttpOperationResponse<V1PodList> podListResp = await podListRespTask;
-                    if (podListResp != null)
-                    {
-                        this.podWatch = Option.Some(podListResp.Watch<V1Pod>(async (type, item) =>
-                        {
-                            try
-                            {
-                                await this.WatchPodEventsAsync(type, item);
-                            }
-                            catch (Exception ex) when (!ex.IsFatal())
-                            {
-                                Events.ExceptionInPodWatch(ex);
-                            }
+            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(async podListRespTask =>
+           {
+               if (podListRespTask != null)
+               {
+                   HttpOperationResponse<V1PodList> podListResp = await podListRespTask;
+                   if (podListResp != null)
+                   {
+                       this.podWatch = Option.Some(podListResp.Watch<V1Pod>(async (type, item) =>
+                       {
+                           try
+                           {
+                               await this.WatchPodEventsAsync(type, item);
+                           }
+                           catch (Exception ex) when (!ex.IsFatal())
+                           {
+                               Events.ExceptionInPodWatch(ex);
+                           }
 
-                        }));
-                    }
-                    else
-                    {
-                        Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "http response");
-                        throw new NullReferenceException("Null response from ListNamespacedPodWithHttpMessagesAsync");
-                    }
-                }
-                else
-                {
-                    Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "task");
-                    throw new NullReferenceException("Null Task from ListNamespacedPodWithHttpMessagesAsync");
-                }
-            });
+                       }));
+                   }
+                   else
+                   {
+                       Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "http response");
+                       throw new NullReferenceException("Null response from ListNamespacedPodWithHttpMessagesAsync");
+                   }
+               }
+               else
+               {
+                   Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "task");
+                   throw new NullReferenceException("Null Task from ListNamespacedPodWithHttpMessagesAsync");
+               }
+           });
 
 
             this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(
@@ -284,7 +284,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                                     }
                                     else
                                     {
-                                        Events.PortBindingValue(module,portBinding.Key);
+                                        Events.PortBindingValue(module, portBinding.Key);
                                     }
                                 }
                             }
@@ -356,7 +356,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 V1ServiceList currentServices = await this.client.ListNamespacedServiceAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
                 V1DeploymentList currentDeployments = await this.client.ListNamespacedDeploymentAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
-                Events.DeploymentStatus(type,this.resourceName);
+                Events.DeploymentStatus(type, this.resourceName);
                 switch (type)
                 {
                     case WatchEventType.Added:
@@ -365,14 +365,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         break;
 
                     case WatchEventType.Deleted:
-                    {
-                        // Delete the deployment.
-                        // Delete any services.
-                        var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
-                        await Task.WhenAll(removeServiceTasks);
-                        var removeDeploymentTasks = currentDeployments.Items.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace));
-                        await Task.WhenAll(removeDeploymentTasks);
-                    }
+                        {
+                            // Delete the deployment.
+                            // Delete any services.
+                            var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
+                            await Task.WhenAll(removeServiceTasks);
+                            var removeDeploymentTasks = currentDeployments.Items.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace));
+                            await Task.WhenAll(removeDeploymentTasks);
+                        }
                         break;
                     case WatchEventType.Error:
                         Events.DeploymentError();
@@ -610,7 +610,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 List<V1EnvVar> env = this.CollectEnv(moduleWithDockerConfig, module.ModuleIdentity);
 
                 // Bind mounts
-                (List<V1Volume> volumeList, List <V1VolumeMount> proxyMounts, List < V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null, null));
+                (List<V1Volume> volumeList, List<V1VolumeMount> proxyMounts, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null, null));
 
                 //Image
                 string moduleImage = moduleWithDockerConfig.Config.Image;
@@ -709,9 +709,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }
             }
 
-            return volumeList.Count > 0  || volumeMountList.Count > 0
+            return volumeList.Count > 0 || volumeMountList.Count > 0
                 ? Option.Some((volumeList, proxyMountList, volumeMountList))
-                : Option.None<(List<V1Volume>,List<V1VolumeMount>, List<V1VolumeMount>)>();
+                : Option.None<(List<V1Volume>, List<V1VolumeMount>, List<V1VolumeMount>)>();
         }
 
         List<V1EnvVar> CollectEnv(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
@@ -766,12 +766,13 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         async Task WatchPodEventsAsync(WatchEventType type, V1Pod item)
         {
             // if the pod doesn't have the module label set then we are not interested in it
-            if (item.Metadata.Labels.ContainsKey(Constants.k8sEdgeModuleLabel) == false) {
+            if (item.Metadata.Labels.ContainsKey(Constants.k8sEdgeModuleLabel) == false)
+            {
                 return;
             }
 
             string podName = item.Metadata.Labels[Constants.k8sEdgeModuleLabel];
-            Events.PodStatus(type,podName);
+            Events.PodStatus(type, podName);
             switch (type)
             {
                 case WatchEventType.Added:
@@ -788,7 +789,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     using (await this.moduleLock.LockAsync())
                     {
                         ModuleRuntimeInfo removedRuntimeInfo;
-                        if (this.moduleRuntimeInfos.TryRemove(podName,out removedRuntimeInfo))
+                        if (this.moduleRuntimeInfos.TryRemove(podName, out removedRuntimeInfo))
                         {
                             removedModuleInfo = Option.Some(removedRuntimeInfo);
                         }
