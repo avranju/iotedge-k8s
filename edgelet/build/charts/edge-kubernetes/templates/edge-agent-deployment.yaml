@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "edge-kubernetes.fullname" . }}-edge-agent
+  name: '{{ include "edge-kubernetes.hostname" . }}-{{ include "edge-kubernetes.deviceid" . }}-edgeagent-deployment'
   namespace: {{ .Values.namespace | quote }}
   labels:
     app.kubernetes.io/name: {{ include "edge-kubernetes.name" . }}-edge-agent
@@ -13,14 +13,14 @@ spec:
   selector:
     matchLabels:
       net.azure-devices.edge.module: "edgeagent"
-      net.azure-devices.edge.deviceid: {{ regexFind "DeviceId=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
-      net.azure-devices.edge.hub: {{ regexFind "HostName=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
+      net.azure-devices.edge.deviceid: {{ include "edge-kubernetes.deviceid" . | quote }}
+      net.azure-devices.edge.hub: {{ include "edge-kubernetes.hostname" . | quote }}
   template:
     metadata:
       labels:
         net.azure-devices.edge.module: "edgeagent"
-        net.azure-devices.edge.deviceid: {{ regexFind "DeviceId=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
-        net.azure-devices.edge.hub: {{ regexFind "HostName=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 | quote }}
+        net.azure-devices.edge.deviceid: {{ include "edge-kubernetes.deviceid" . | quote }}
+        net.azure-devices.edge.hub: {{ include "edge-kubernetes.hostname" . | quote }}
     spec:
       serviceAccountName: "{{.Release.Name}}-service-account"
       containers:

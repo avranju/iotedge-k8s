@@ -24,7 +24,7 @@ edgeAgent:
   containerName: edgeagent
   image:
     repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
-    tag: 19046686-linux-amd64
+    tag: 19145536-linux-amd64
     pullPolicy: Always
   # Optional registry credentials for pulling edge agent image
   registryCredentials:
