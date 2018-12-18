@@ -71,3 +71,17 @@ auths:
     auth: {{ printf "%s:%s" $val.username $val.password | b64enc | quote }}
   {{- end }}
 {{- end }}
+
+{{/*
+Parse the device ID from connection string.
+*/}}
+{{- define "edge-kubernetes.deviceid" -}}
+{{- regexFind "DeviceId=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 -}}
+{{- end -}}
+
+{{/*
+Parse the host name from connection string.
+*/}}
+{{- define "edge-kubernetes.hostname" -}}
+{{- regexFind "HostName=[^;]+" .Values.deviceConnectionString | regexFind "=.+" | substr 1 -1 -}}
+{{- end -}}
