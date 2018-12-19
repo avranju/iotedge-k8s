@@ -6,6 +6,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
     using System.Collections.Generic;
     using static System.Environment;
     using System.IO;
+    using System.Net.Http;
     using System.Threading.Tasks;
     using Autofac;
     using k8s;
@@ -22,6 +23,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
     using ModuleIdentityLifecycleManager = Microsoft.Azure.Devices.Edge.Agent.Edgelet.ModuleIdentityLifecycleManager;
     using Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners;
     using Microsoft.Azure_Devices.Edge.Agent.Kubernetes;
+    using Microsoft.Rest;
 
     public class KubernetesModule : Module
     {
@@ -61,6 +63,13 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             // IKubernetesClient
             builder.Register(c =>
                 {
+                    // enable tracing of k8s requests made by the client
+                    var loggerFactory = c.Resolve<ILoggerFactory>();
+                    ILogger logger = loggerFactory.CreateLogger(typeof(Kubernetes));
+                    // TODO: Make the following configurable.
+                    ServiceClientTracing.IsEnabled = true;
+                    ServiceClientTracing.AddTracingInterceptor(new DebugTracer(logger));
+
                     // load the k8s config from $HOME/.kube/config if its available
                     KubernetesClientConfiguration kubeConfig;
                     string kubeConfigPath = Path.Combine(Environment.GetFolderPath(SpecialFolder.UserProfile), ".kube", "config");
@@ -154,5 +163,54 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
              .SingleInstance();
         }
     }
-}
 
+    class DebugTracer : IServiceClientTracingInterceptor
+    {
+        ILogger logger;
+
+        public DebugTracer(ILogger logger)
+        {
+            this.logger = logger;
+        }
+
+        public void Information(string message)
+        {
+            this.logger.LogInformation(message);
+        }
+
+        public void TraceError(string invocationId, Exception exception)
+        {
+            this.logger.LogError("Exception in {0}: {1}", invocationId, exception);
+        }
+
+        public void ReceiveResponse(string invocationId, HttpResponseMessage response)
+        {
+            string requestAsString = (response == null ? string.Empty : response.AsFormattedString());
+            this.logger.LogInformation("invocationId: {0}\r\nresponse: {1}", invocationId, requestAsString);
+        }
+
+        public void SendRequest(string invocationId, HttpRequestMessage request)
+        {
+            string requestAsString = (request == null ? string.Empty : request.AsFormattedString());
+            this.logger.LogInformation("invocationId: {0}\r\nrequest: {1}", invocationId, requestAsString);
+        }
+
+        public void Configuration(string source, string name, string value)
+        {
+            this.logger.LogInformation("Configuration: source={0}, name={1}, value={2}", source, name, value);
+        }
+
+        public void EnterMethod(string invocationId, object instance, string method, IDictionary<string, object> parameters)
+        {
+            this.logger.LogInformation("invocationId: {0}\r\ninstance: {1}\r\nmethod: {2}\r\nparameters: {3}",
+                invocationId, instance, method, parameters.AsFormattedString());
+        }
+
+        public void ExitMethod(string invocationId, object returnValue)
+        {
+            string returnValueAsString = (returnValue == null ? string.Empty : returnValue.ToString());
+            this.logger.LogInformation("Exit with invocation id {0}, the return value is {1}",
+                invocationId, returnValueAsString);
+        }
+    }
+}

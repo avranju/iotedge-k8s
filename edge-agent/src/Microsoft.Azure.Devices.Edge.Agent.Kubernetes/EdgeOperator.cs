@@ -374,7 +374,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                             // Delete any services.
                             var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
                             await Task.WhenAll(removeServiceTasks);
-                            var removeDeploymentTasks = currentDeployments.Items.Select(d => this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
+                            var removeDeploymentTasks = currentDeployments.Items.Select(
+                                d => this.client.DeleteNamespacedDeployment1Async(
+                                    new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
                             await Task.WhenAll(removeDeploymentTasks);
                         }
                         break;
@@ -437,7 +439,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         {
             // PUll current configuration from annotations.
             List<V1Service> currentV1Services = this.GetCurrentServiceConfig(currentServices);
-            List<V1Deployment> currentV1Deployments = this.GetCurrentDeploymentConfig(currentDeployments);
+            List<V1Deployment> currentDeploymentsFromAnnotations = this.GetCurrentDeploymentConfig(currentDeployments);
 
             var desiredServices = new List<V1Service>();
             var desiredDeployments = new List<V1Deployment>();
@@ -490,7 +492,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             var servicesRemoved = new List<V1Service>(currentServices.Items);
             servicesRemoved.RemoveAll(s => desiredServices.Exists(i => string.Equals(i.Metadata.Name, s.Metadata.Name)));
             var deploymentsRemoved = new List<V1Deployment>(currentDeployments.Items);
-            deploymentsRemoved.RemoveAll(d => desiredDeployments.Exists(i => string.Equals(i.Metadata.Name, d.Metadata.Name)));
+            deploymentsRemoved.RemoveAll(d =>
+            {
+                return desiredDeployments.Exists(i => string.Equals(i.Metadata.Name, d.Metadata.Name)) ||
+                    d.Metadata.Name == this.DeploymentName(CoreConstants.EdgeAgentModuleName);
+            });
 
             var newServices = new List<V1Service>();
             var currentServicesList = currentServices.Items.ToList();
@@ -541,13 +547,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     if (currentDeploymentsList.Exists(i => string.Equals(i.Metadata.Name, d.Metadata.Name)))
                     {
                         V1Deployment current = currentDeploymentsList.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
-                        V1Deployment currentCreated = currentV1Deployments.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
-                        // Exception for EdgeAgent: only compare container images.
-                        if (V1DeploymentEx.DeploymentEquals(currentCreated, d) ||
-                            (string.Equals(d.Metadata.Name, CoreConstants.EdgeAgentModuleName) && V1DeploymentEx.ImageEquals(currentCreated, d)))
+                        V1Deployment currentFromAnnotation = currentDeploymentsFromAnnotations.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
+
+                        if (V1DeploymentEx.DeploymentEquals(currentFromAnnotation, d) ||
+                            (string.Equals(d.Metadata.Name, DeploymentName(CoreConstants.EdgeAgentModuleName)) && V1DeploymentEx.ImageEquals(current, d)))
                         {
                             return;
                         }
+
                         string creationString = JsonConvert.SerializeObject(d);
                         d.Metadata.ResourceVersion = current.Metadata.ResourceVersion;
                         if (d.Metadata.Annotations == null)
@@ -589,7 +596,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             var removeDeploymentTasks = deploymentsRemoved.Select(d =>
             {
                 Events.DeletingDeployment(d);
-                return this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(), d.Metadata.Name, Constants.k8sNamespace);
+                return this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground");
             });
             await Task.WhenAll(removeDeploymentTasks);
 
@@ -775,7 +782,6 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             envList.Add(new V1EnvVar(CoreConstants.EdgeletAuthSchemeVariableName, "sasToken"));
             envList.Add(new V1EnvVar(Logger.RuntimeLogLevelEnvKey, Logger.GetLogLevel().ToString()));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletWorkloadUriVariableName, this.workloadUri.ToString()));
-            envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
             envList.Add(new V1EnvVar(CoreConstants.EdgeletModuleGenerationIdVariableName, identity.Credentials.ModuleGenerationId));
             envList.Add(new V1EnvVar(CoreConstants.DeviceIdVariableName, this.deviceId)); // could also get this from module identity
             envList.Add(new V1EnvVar(CoreConstants.ModuleIdVariableName, identity.ModuleId));
@@ -796,6 +802,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 string.Equals(identity.ModuleId, CoreConstants.EdgeHubModuleIdentityName))
             {
                 envList.Add(new V1EnvVar(CoreConstants.EdgeDeviceHostNameKey, this.edgeHostname));
+            }
+            else
+            {
+                envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
             }
             return envList;
         }
