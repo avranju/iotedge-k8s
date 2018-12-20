@@ -55,6 +55,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly Uri managementUri;
         readonly TypeSpecificSerDe<EdgeDeploymentDefinition> deploymentSerde;
         readonly JsonSerializerSettings crdSerializerSettings;
+        readonly AsyncLock watchLock;
 
         private string Getk8sNameFromModuleName(string moduleName)
         {
@@ -95,6 +96,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             this.client = Preconditions.CheckNotNull(client, nameof(client));
             this.moduleRuntimeInfos = new Dictionary<string, ModuleRuntimeInfo>();
             this.moduleLock = new AsyncLock();
+            this.watchLock = new AsyncLock();
             this.podWatch = Option.None<Watcher<V1Pod>>();
             this.resourceName = this.iotHubHostname + Constants.k8sNameDivider + this.deviceId;
             this.deploymentSelector = Constants.k8sEdgeDeviceLabel + " = " + this.deviceId + "," + Constants.k8sEdgeHubNameLabel + "=" + this.iotHubHostname;
@@ -149,6 +151,110 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return new SystemInfo(osType, arch, version);
         }
 
+        private async void ListCrdComplete(Task<HttpOperationResponse<object>> customObjectWatchTask)
+        {
+            if (customObjectWatchTask != null)
+            {
+                HttpOperationResponse<object> customObjectWatch = await customObjectWatchTask;
+                if (customObjectWatch != null)
+                {
+                    // We can add events to a watch once created, like if connection is closed, etc.
+                    this.operatorWatch = Option.Some(customObjectWatch.Watch<object>(
+                        onEvent: async (type, item) =>
+                        {
+                            try
+                            {
+                                await this.WatchDeploymentEventsAsync(type, item);
+                            }
+                            catch (Exception ex) when (!ex.IsFatal())
+                            {
+                                Events.ExceptionInCustomResourceWatch(ex);
+                            }
+                        },
+                        onClosed: () =>
+                        {
+                            Events.CrdWatchClosed();
+
+                            // get rid of the current crd watch object since we got closed
+                            this.operatorWatch.ForEach(watch => watch.Dispose());
+                            this.operatorWatch = Option.None<Watcher<object>>();
+
+                            // kick off a new watch
+                            this.client.ListClusterCustomObjectWithHttpMessagesAsync(
+                                Constants.k8sCrdGroup,
+                                Constants.k8sApiVersion,
+                                Constants.k8sCrdPlural,
+                                watch: true)
+                                .ContinueWith(ListCrdComplete);
+                        },
+                        onError: ex =>
+                        {
+                            Events.ExceptionInCustomResourceWatch(ex);
+                        }
+                    ));
+                }
+                else
+                {
+                    Events.NullListResponse("ListClusterCustomObjectWithHttpMessagesAsync", "http response");
+                    throw new NullReferenceException("Null response from ListClusterCustomObjectWithHttpMessagesAsync");
+                }
+            }
+            else
+            {
+                Events.NullListResponse("ListClusterCustomObjectWithHttpMessagesAsync", "task");
+                throw new NullReferenceException("Null Task from ListClusterCustomObjectWithHttpMessagesAsync");
+            }
+        }
+
+        private async void ListPodComplete(Task<HttpOperationResponse<V1PodList>> podListRespTask)
+        {
+            if (podListRespTask != null)
+            {
+                HttpOperationResponse<V1PodList> podListResp = await podListRespTask;
+                if (podListResp != null)
+                {
+                    this.podWatch = Option.Some(podListResp.Watch<V1Pod>(
+                            onEvent: async (type, item) =>
+                            {
+                                try
+                                {
+                                    await this.WatchPodEventsAsync(type, item);
+                                }
+                                catch (Exception ex) when (!ex.IsFatal())
+                                {
+                                    Events.ExceptionInPodWatch(ex);
+                                }
+                            },
+                            onClosed: () =>
+                            {
+                                Events.PodWatchClosed();
+
+                                // get rid of the current pod watch object since we got closed
+                                this.podWatch.ForEach(watch => watch.Dispose());
+                                this.podWatch = Option.None<Watcher<V1Pod>>();
+
+                                // kick off a new watch
+                                this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(ListPodComplete);
+                            },
+                            onError: ex =>
+                            {
+                                Events.ExceptionInPodWatch(ex);
+                            }
+                        ));
+                }
+                else
+                {
+                    Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "http response");
+                    throw new NullReferenceException("Null response from ListNamespacedPodWithHttpMessagesAsync");
+                }
+            }
+            else
+            {
+                Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "task");
+                throw new NullReferenceException("Null Task from ListNamespacedPodWithHttpMessagesAsync");
+            }
+        }
+
         public void Start()
         {
             // The following "List..." requests do not return until there is something to return, so if we "await" here,
@@ -158,74 +264,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             // is an acceptable fate if these tasks fail.
 
             // Pod watching for module runtime status.
-            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(async podListRespTask =>
-           {
-               if (podListRespTask != null)
-               {
-                   HttpOperationResponse<V1PodList> podListResp = await podListRespTask;
-                   if (podListResp != null)
-                   {
-                       this.podWatch = Option.Some(podListResp.Watch<V1Pod>(async (type, item) =>
-                       {
-                           try
-                           {
-                               await this.WatchPodEventsAsync(type, item);
-                           }
-                           catch (Exception ex) when (!ex.IsFatal())
-                           {
-                               Events.ExceptionInPodWatch(ex);
-                           }
+            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(ListPodComplete);
 
-                       }));
-                   }
-                   else
-                   {
-                       Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "http response");
-                       throw new NullReferenceException("Null response from ListNamespacedPodWithHttpMessagesAsync");
-                   }
-               }
-               else
-               {
-                   Events.NullListResponse("ListNamespacedPodWithHttpMessagesAsync", "task");
-                   throw new NullReferenceException("Null Task from ListNamespacedPodWithHttpMessagesAsync");
-               }
-           });
-
-
-            this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(
-                async customObjectWatchTask =>
-                {
-                    if (customObjectWatchTask != null)
-                    {
-                        HttpOperationResponse<object> customObjectWatch = await customObjectWatchTask;
-                        if (customObjectWatch != null)
-                        {
-                            // We can add events to a watch once created, like if connection is closed, etc.
-                            this.operatorWatch = Option.Some(customObjectWatch.Watch<object>(
-                                async (type, item) =>
-                                {
-                                    try
-                                    {
-                                        await this.WatchDeploymentEventsAsync(type, item);
-                                    }
-                                    catch (Exception ex) when (!ex.IsFatal())
-                                    {
-                                        Events.ExceptionInCustomResourceWatch(ex);
-                                    }
-                                }));
-                        }
-                        else
-                        {
-                            Events.NullListResponse("ListClusterCustomObjectWithHttpMessagesAsync", "http response");
-                            throw new NullReferenceException("Null response from ListClusterCustomObjectWithHttpMessagesAsync");
-                        }
-                    }
-                    else
-                    {
-                        Events.NullListResponse("ListClusterCustomObjectWithHttpMessagesAsync", "task");
-                        throw new NullReferenceException("Null Task from ListClusterCustomObjectWithHttpMessagesAsync");
-                    }
-                });
+            // CRD watch
+            this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(ListCrdComplete);
         }
 
         Option<List<(int, string)>> GetExposedPorts(IDictionary<string, DockerModels.EmptyStruct> exposedPorts)
@@ -343,53 +385,55 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         async Task WatchDeploymentEventsAsync(WatchEventType type, object custom)
         {
-            EdgeDeploymentDefinition customObject;
-            try
+            using (await this.watchLock.LockAsync())
             {
-                string customString = JsonConvert.SerializeObject(custom);
-                customObject = this.deploymentSerde.Deserialize(customString);
-            }
-            catch (Exception e)
-            {
-                Events.EdgeDeploymentDeserializeFail(e);
-                return;
-            }
-
-            // only operate on the device that matches this operator.
-            if (String.Equals(customObject.Metadata.Name, this.resourceName, StringComparison.OrdinalIgnoreCase))
-            {
-                V1ServiceList currentServices = await this.client.ListNamespacedServiceAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
-                V1DeploymentList currentDeployments = await this.client.ListNamespacedDeploymentAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
-                Events.DeploymentStatus(type, this.resourceName);
-                switch (type)
+                EdgeDeploymentDefinition customObject;
+                try
                 {
-                    case WatchEventType.Added:
-                    case WatchEventType.Modified:
-                        this.ManageDeployments(currentServices, currentDeployments, customObject);
-                        break;
+                    string customString = JsonConvert.SerializeObject(custom);
+                    customObject = this.deploymentSerde.Deserialize(customString);
+                }
+                catch (Exception e)
+                {
+                    Events.EdgeDeploymentDeserializeFail(e);
+                    return;
+                }
 
-                    case WatchEventType.Deleted:
-                        {
-                            // Delete the deployment.
-                            // Delete any services.
-                            var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
-                            await Task.WhenAll(removeServiceTasks);
-                            var removeDeploymentTasks = currentDeployments.Items.Select(
-                                d => this.client.DeleteNamespacedDeployment1Async(
-                                    new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
-                            await Task.WhenAll(removeDeploymentTasks);
-                        }
-                        break;
-                    case WatchEventType.Error:
-                        Events.DeploymentError();
-                        break;
+                // only operate on the device that matches this operator.
+                if (String.Equals(customObject.Metadata.Name, this.resourceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    V1ServiceList currentServices = await this.client.ListNamespacedServiceAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
+                    V1DeploymentList currentDeployments = await this.client.ListNamespacedDeploymentAsync(Constants.k8sNamespace, labelSelector: this.deploymentSelector);
+                    Events.DeploymentStatus(type, this.resourceName);
+                    switch (type)
+                    {
+                        case WatchEventType.Added:
+                        case WatchEventType.Modified:
+                            this.ManageDeployments(currentServices, currentDeployments, customObject);
+                            break;
+
+                        case WatchEventType.Deleted:
+                            {
+                                // Delete the deployment.
+                                // Delete any services.
+                                var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
+                                await Task.WhenAll(removeServiceTasks);
+                                var removeDeploymentTasks = currentDeployments.Items.Select(
+                                    d => this.client.DeleteNamespacedDeployment1Async(
+                                        new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
+                                await Task.WhenAll(removeDeploymentTasks);
+                            }
+                            break;
+                        case WatchEventType.Error:
+                            Events.DeploymentError();
+                            break;
+                    }
+                }
+                else
+                {
+                    Events.DeploymentNameMismatch(customObject.Metadata.Name, this.resourceName);
                 }
             }
-            else
-            {
-                Events.DeploymentNameMismatch(customObject.Metadata.Name, this.resourceName);
-            }
-
         }
 
         List<V1Service> GetCurrentServiceConfig(V1ServiceList currentServices)
@@ -945,6 +989,8 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 CreatingDeployment,
                 CreatingService,
                 ReplacingDeployment,
+                PodWatchClosed,
+                CrdWatchClosed,
             }
 
             public static void DeletingService(V1Service service)
@@ -1043,9 +1089,20 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 Log.LogDebug((int)EventIds.CreateDeployment, $"Creating edge deployment '{name}'");
             }
+
             public static void NullListResponse(string listType, string what)
             {
                 Log.LogError((int)EventIds.NullListResponse, $"{listType} returned null {what}");
+            }
+
+            public static void PodWatchClosed()
+            {
+                Log.LogInformation((int)EventIds.PodWatchClosed, $"K8s closed the pod watch. Attempting to reopen watch.");
+            }
+
+            public static void CrdWatchClosed()
+            {
+                Log.LogInformation((int)EventIds.CrdWatchClosed, $"K8s closed the CRD watch. Attempting to reopen watch.");
             }
         }
     }

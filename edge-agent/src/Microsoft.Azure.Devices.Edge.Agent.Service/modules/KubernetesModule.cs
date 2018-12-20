@@ -39,9 +39,16 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
         readonly IEnumerable<AuthConfig> dockerAuthConfig;
         readonly Option<UpstreamProtocol> upstreamProtocol;
         readonly Option<string> productInfo;
+        readonly bool enableServiceCallTracing;
 
-        public KubernetesModule(string iotHubHostname, string gatewayHostName, string deviceId, string proxyImage, string proxyConfigPath, string proxyConfigVolumeName,
-            string serviceAccountName, Uri managementUri, Uri workloadUri, IEnumerable<AuthConfig> dockerAuthConfig, Option<UpstreamProtocol> upstreamProtocol, Option<string> productInfo)
+        public KubernetesModule(
+            string iotHubHostname, string gatewayHostName, string deviceId,
+            string proxyImage, string proxyConfigPath, string proxyConfigVolumeName,
+            string serviceAccountName, Uri managementUri, Uri workloadUri,
+            IEnumerable<AuthConfig> dockerAuthConfig,
+            Option<UpstreamProtocol> upstreamProtocol,
+            Option<string> productInfo,
+            bool enableServiceCallTracing)
         {
 
             this.iotHubHostname = Preconditions.CheckNonWhiteSpace(iotHubHostname, nameof(iotHubHostname));
@@ -56,6 +63,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             this.dockerAuthConfig = Preconditions.CheckNotNull(dockerAuthConfig, nameof(dockerAuthConfig));
             this.upstreamProtocol = Preconditions.CheckNotNull(upstreamProtocol, nameof(upstreamProtocol));
             this.productInfo = productInfo;
+            this.enableServiceCallTracing = enableServiceCallTracing;
         }
 
         protected override void Load(ContainerBuilder builder)
@@ -63,12 +71,14 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
             // IKubernetesClient
             builder.Register(c =>
                 {
-                    // enable tracing of k8s requests made by the client
-                    var loggerFactory = c.Resolve<ILoggerFactory>();
-                    ILogger logger = loggerFactory.CreateLogger(typeof(Kubernetes));
-                    // TODO: Make the following configurable.
-                    ServiceClientTracing.IsEnabled = true;
-                    ServiceClientTracing.AddTracingInterceptor(new DebugTracer(logger));
+                    if (this.enableServiceCallTracing)
+                    {
+                        // enable tracing of k8s requests made by the client
+                        var loggerFactory = c.Resolve<ILoggerFactory>();
+                        ILogger logger = loggerFactory.CreateLogger(typeof(Kubernetes));
+                        ServiceClientTracing.IsEnabled = true;
+                        ServiceClientTracing.AddTracingInterceptor(new DebugTracer(logger));
+                    }
 
                     // load the k8s config from $HOME/.kube/config if its available
                     KubernetesClientConfiguration kubeConfig;

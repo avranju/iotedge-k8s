@@ -45,7 +45,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
             this.combinedConfigProvider = Preconditions.CheckNotNull(combinedConfigProvider, nameof(combinedConfigProvider));
         }
 
-        public async Task<Plan> PlanAsync(ModuleSet desired,
+        public async Task<Plan> PlanAsync(
+            ModuleSet desired,
             ModuleSet current,
             IRuntimeInfo runtimeInfo,
             IImmutableDictionary<string, IModuleIdentity> moduleIdentities)
@@ -56,11 +57,9 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
             var k8sModules = new List<KubernetesModule>();
             foreach (var m in desired.Modules)
             {
-                // TODO: There should be no reason to not have identities in normal behavior - or else this plan need to fail
-                //       But right now I don't have an identity provider to test with.
-                KubernetesModule moduleWithIdentity;
                 if (moduleIdentities.TryGetValue(m.Key, out IModuleIdentity moduleIdentity))
                 {
+                    KubernetesModule moduleWithIdentity;
                     IdentityProviderServiceCredentials creds;
                     if (moduleIdentity.Credentials is IdentityProviderServiceCredentials moduleCreds)
                     {
@@ -70,6 +69,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
                     {
                         throw new InvalidIdentityException($"No valid credentials found for {moduleIdentity.DeviceId}/{moduleIdentity.ModuleId}");
                     }
+
                     moduleWithIdentity = new KubernetesModule(
                         m.Value,
                         new KubernetesModuleIdentity(
@@ -78,15 +78,14 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
                             moduleIdentity.DeviceId,
                             moduleIdentity.ModuleId,
                             creds));
+
+                    k8sModules.Add(moduleWithIdentity);
                 }
                 else
                 {
-                    moduleWithIdentity = new KubernetesModule(
-                        m.Value,
-                        new KubernetesModuleIdentity(this.iotHubHostname, this.gatewayHostname, this.deviceId, m.Key, new IdentityProviderServiceCredentials("management","9343473")));
+                    Events.UnableToProcessModule(m.Value);
                 }
-                k8sModules.Add(moduleWithIdentity);
-            
+
             }
             //string iotHubHostname, string deviceId, IKubernetes client, IModuleWithIdentity[] modules, Option<IRuntimeInfo> runtimeInfo, ICombinedConfigProvider<T> combinedConfigProvider
             var crdCommand = new KubernetesCrdCommand<CombinedDockerConfig>(this.iotHubHostname, this.deviceId, this.client, k8sModules.ToArray(), Option.Some(runtimeInfo), combinedConfigProvider as ICombinedConfigProvider<CombinedDockerConfig>);
@@ -118,13 +117,13 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
                 PlanCreated = IdStart,
                 DesiredModules,
                 CurrentModules,
+                UnableToProcessModule
             }
 
             public static void PlanCreated(IList<ICommand> commands)
             {
                 Log.LogDebug((int)EventIds.PlanCreated, $"HealthRestartPlanner created Plan, with {commands.Count} command(s).");
             }
-
 
             internal static void LogDesired(ModuleSet desired)
             {
@@ -138,8 +137,10 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners
                 Log.LogDebug((int)EventIds.CurrentModules, $"List of current modules is - {JsonConvert.SerializeObject(modules)}");
             }
 
+            public static void UnableToProcessModule(IModule module)
+            {
+                Log.LogInformation((int)EventIds.UnableToProcessModule, $"Unable to process module {module.Name} add or update as the module identity could not be obtained");
+            }
         }
-
     }
-
 }

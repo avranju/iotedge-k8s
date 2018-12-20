@@ -40,6 +40,10 @@ edgeAgent:
     # This variable isn't really used in k8s mode.
     networkId: 'azure-iot-edge'
     authScheme: 'sasToken'
+    # Set this to false if you want to turn off verbose k8s call tracing
+    enableK8sServiceCallTracing: 'true'
+    # Configure edge agent log verbosity
+    runtimeLogLevel: 'debug'
 
 # Registry credentials for module images
 registryCredentials:

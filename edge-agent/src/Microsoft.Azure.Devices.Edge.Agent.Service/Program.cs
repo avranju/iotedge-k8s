@@ -133,9 +133,15 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service
                         string proxyConfigPath = configuration.GetValue<string>(Constants.ProxyConfigPathEnvKey);
                         string proxyConfigVolumeName = configuration.GetValue<string>(Constants.ProxyConfigVolumeEnvKey);
                         string serviceAccountName = configuration.GetValue<string>(Constants.EdgeAgentServiceAccountName);
+                        bool enableServiceCallTracing = configuration.GetValue<bool>(Constants.EnableK8sServiceCallTracingName);
 
                         builder.RegisterModule(new AgentModule(maxRestartCount, intensiveCareTime, coolOffTimeUnitInSeconds, usePersistentStorage, storagePath, Option.Some(new Uri(workloadUri)), moduleId, Option.Some(moduleGenerationId)));
-                        builder.RegisterModule(new Modules.KubernetesModule(iothubHostname, edgeDeviceHostName, deviceId, proxyImage, proxyConfigPath, proxyConfigVolumeName, serviceAccountName, new Uri(managementUri), new Uri(workloadUri), dockerAuthConfig, upstreamProtocol, productInfo));
+                        builder.RegisterModule(new Modules.KubernetesModule(
+                            iothubHostname, edgeDeviceHostName, deviceId,
+                            proxyImage, proxyConfigPath, proxyConfigVolumeName,
+                            serviceAccountName, new Uri(managementUri),
+                            new Uri(workloadUri), dockerAuthConfig,
+                            upstreamProtocol, productInfo, enableServiceCallTracing));
                         break;
 
                     default:
