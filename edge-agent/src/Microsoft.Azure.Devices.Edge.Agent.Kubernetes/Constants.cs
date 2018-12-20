@@ -18,6 +18,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
 
         public const string k8sEdgeModuleLabel = "net.azure-devices.edge.module";
 
+        public const string k8sEdgeOriginalModuleId = "net.azure-devices.edge.original-moduleid";
+
         public const string k8sEdgeDeviceLabel = "net.azure-devices.edge.deviceid";
 
         public const string k8sEdgeHubNameLabel = "net.azure-devices.edge.hub";

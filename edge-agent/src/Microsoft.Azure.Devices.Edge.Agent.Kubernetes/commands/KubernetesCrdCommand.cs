@@ -155,7 +155,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
                 Console.WriteLine("=================================================");
                 Console.WriteLine(body);
                 Console.WriteLine("=================================================");
-                activeDeployment = currentDeployment.Response.IsSuccessStatusCode?
+                activeDeployment = currentDeployment.Response.IsSuccessStatusCode ?
                     Option.Some(this.deploymentSerde.Deserialize(body)) :
                     Option.None<EdgeDeploymentDefinition>();
             }
@@ -170,7 +170,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
 
             var metadata = new V1ObjectMeta(name: resourceName, namespaceProperty: Constants.k8sNamespace);
             // need resourceVersion for Replace.
-            activeDeployment.ForEach( deployment => metadata.ResourceVersion = deployment.Metadata.ResourceVersion);
+            activeDeployment.ForEach(deployment => metadata.ResourceVersion = deployment.Metadata.ResourceVersion);
             var customObjectDefinition = new EdgeDeploymentDefinition(metaApiVersion, Constants.k8sCrdKind, metadata, modulesList);
             string customObjectString = this.deploymentSerde.Serialize(customObjectDefinition);
 
@@ -178,10 +178,10 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             object crdObject = JsonConvert.DeserializeObject(customObjectString);
             //object crdObject = customObjectDefinition;
 
-            if (! activeDeployment.HasValue)
+            if (!activeDeployment.HasValue)
             {
                 Events.CreateDeployment(customObjectString);
-                object response = await this.client.CreateNamespacedCustomObjectWithHttpMessagesAsync(
+                await this.client.CreateNamespacedCustomObjectWithHttpMessagesAsync(
                     crdObject,
                     Constants.k8sCrdGroup,
                     Constants.k8sApiVersion,
@@ -193,7 +193,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Commands
             else
             {
                 Events.ReplaceDeployment(customObjectString);
-                object response = await this.client.ReplaceNamespacedCustomObjectWithHttpMessagesAsync(
+                await this.client.ReplaceNamespacedCustomObjectWithHttpMessagesAsync(
                     crdObject,
                     Constants.k8sCrdGroup,
                     Constants.k8sApiVersion,

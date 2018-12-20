@@ -57,20 +57,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly JsonSerializerSettings crdSerializerSettings;
         readonly AsyncLock watchLock;
 
-        private string Getk8sNameFromModuleName(string moduleName)
-        {
-            switch (moduleName)
-            {
-                case CoreConstants.EdgeAgentModuleIdentityName:
-                    return CoreConstants.EdgeAgentModuleName.ToLower();
-                case CoreConstants.EdgeHubModuleIdentityName:
-                    return CoreConstants.EdgeHubModuleName.ToLower();
-                default:
-                    break;
-            }
-
-            return moduleName.ToLower();
-        }
+        const string LOWER_ASCII = "abcdefghijklmnopqrstuvwxyz";
 
         public EdgeOperator(
             string iotHubHostname,
@@ -151,7 +138,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return new SystemInfo(osType, arch, version);
         }
 
-        private async void ListCrdComplete(Task<HttpOperationResponse<object>> customObjectWatchTask)
+        private async Task ListCrdComplete(Task<HttpOperationResponse<object>> customObjectWatchTask)
         {
             if (customObjectWatchTask != null)
             {
@@ -181,11 +168,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                             // kick off a new watch
                             this.client.ListClusterCustomObjectWithHttpMessagesAsync(
-                                Constants.k8sCrdGroup,
-                                Constants.k8sApiVersion,
-                                Constants.k8sCrdPlural,
-                                watch: true)
-                                .ContinueWith(ListCrdComplete);
+                            Constants.k8sCrdGroup,
+                            Constants.k8sApiVersion,
+                            Constants.k8sCrdPlural,
+                            watch: true)
+                            .ContinueWith(ListCrdComplete);
                         },
                         onError: ex =>
                         {
@@ -206,7 +193,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             }
         }
 
-        private async void ListPodComplete(Task<HttpOperationResponse<V1PodList>> podListRespTask)
+        private async Task ListPodComplete(Task<HttpOperationResponse<V1PodList>> podListRespTask)
         {
             if (podListRespTask != null)
             {
@@ -270,7 +257,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(ListCrdComplete);
         }
 
-        Option<List<(int, string)>> GetExposedPorts(IDictionary<string, DockerModels.EmptyStruct> exposedPorts)
+        Option<List<(int Port, string Protocol)>> GetExposedPorts(IDictionary<string, DockerModels.EmptyStruct> exposedPorts)
         {
             var serviceList = new List<(int, string)>();
             foreach (var exposedPort in exposedPorts)
@@ -295,7 +282,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         Option<V1Service> GetServiceFromModule(Dictionary<string, string> labels, KubernetesModule module)
         {
-            var serviceList = new List<V1ServicePort>();
+            var portList = new List<V1ServicePort>();
             bool onlyExposedPorts = true;
             if (module.Module is IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
             {
@@ -304,7 +291,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 {
                     this.GetExposedPorts(moduleWithDockerConfig.Config.CreateOptions.ExposedPorts)
                         .ForEach(exposedList =>
-                            exposedList.ForEach((item) => serviceList.Add(new V1ServicePort(item.Item1, name: $"{item.Item1}-{item.Item2.ToLower()}", protocol: item.Item2))));
+                            exposedList.ForEach((item) => portList.Add(new V1ServicePort(item.Port, name: $"{item.Port}-{item.Protocol.ToLower()}", protocol: item.Protocol))));
                 }
 
                 // Handle HostConfig PortBindings entries
@@ -325,7 +312,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                                     int hostPort;
                                     if (int.TryParse(hostBinding.HostPort, out hostPort))
                                     {
-                                        serviceList.Add(new V1ServicePort(port, name: $"{port}-{protocol.ToLower()}", protocol: protocol, targetPort: hostPort));
+                                        portList.Add(new V1ServicePort(port, name: $"{port}-{protocol.ToLower()}", protocol: protocol, targetPort: hostPort));
                                         onlyExposedPorts = false;
                                     }
                                     else
@@ -339,10 +326,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }
             }
 
-            if (serviceList.Count > 0)
+            if (portList.Count > 0)
             {
                 // Selector: by module name and device name, also how we will label this puppy.
-                var objectMeta = new V1ObjectMeta(labels: labels, name: this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId));
+                var objectMeta = new V1ObjectMeta(labels: labels, name: GetK8sName(module.ModuleIdentity.ModuleId));
                 // How we manage this service is dependent on the port mappings user asks for.
                 string serviceType;
                 if (onlyExposedPorts)
@@ -353,7 +340,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 {
                     serviceType = "NodePort";
                 }
-                return Option.Some(new V1Service(metadata: objectMeta, spec: new V1ServiceSpec(type: serviceType, ports: serviceList, selector: labels)));
+                return Option.Some(new V1Service(metadata: objectMeta, spec: new V1ServiceSpec(type: serviceType, ports: portList, selector: labels)));
             }
             else
             {
@@ -441,14 +428,13 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return currentServices.Items.Select(
                 service =>
                 {
-
                     try
                     {
                         string creationString = service.Metadata.Annotations[Constants.CreationString];
                         V1Service createdService = JsonConvert.DeserializeObject<V1Service>(creationString);
                         return createdService;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (!ex.IsFatal())
                     {
                         Events.InvalidCreationString(ex);
                     }
@@ -467,7 +453,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         V1Deployment createdDeployment = JsonConvert.DeserializeObject<V1Deployment>(creationString);
                         return createdDeployment;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (!ex.IsFatal())
                     {
                         Events.InvalidCreationString(ex);
                     }
@@ -477,12 +463,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         }
 
         string DeploymentName(string moduleId) => this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
-            + this.Getk8sNameFromModuleName(moduleId);
+            + GetK8sName(moduleId);
 
         async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
         {
-            // PUll current configuration from annotations.
-            List<V1Service> currentV1Services = this.GetCurrentServiceConfig(currentServices);
+            // Pull current configuration from annotations.
+            List<V1Service> currentV1ServicesFromAnnotations = this.GetCurrentServiceConfig(currentServices);
             List<V1Deployment> currentDeploymentsFromAnnotations = this.GetCurrentDeploymentConfig(currentDeployments);
 
             var desiredServices = new List<V1Service>();
@@ -494,9 +480,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     // Default labels
                     var labels = new Dictionary<string, string>
                     {
-                        [Constants.k8sEdgeModuleLabel] = this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId),
-                        [Constants.k8sEdgeDeviceLabel] = this.deviceId,
-                        [Constants.k8sEdgeHubNameLabel] = this.iotHubHostname
+                        [Constants.k8sEdgeModuleLabel] = GetK8sName(module.ModuleIdentity.ModuleId),
+                        [Constants.k8sEdgeDeviceLabel] = GetK8sName(this.deviceId),
+                        [Constants.k8sEdgeHubNameLabel] = GetK8sName(this.iotHubHostname)
                     };
 
                     // Create a Service for every network interface of each module. (label them with hub, device and module id)
@@ -549,7 +535,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 {
                     if (currentServicesList.Exists(i => string.Equals(i.Metadata.Name, s.Metadata.Name)))
                     {
-                        V1Service currentCreated = currentV1Services.Find(i => string.Equals(i.Metadata.Name, s.Metadata.Name));
+                        V1Service currentCreated = currentV1ServicesFromAnnotations.Find(i => string.Equals(i.Metadata.Name, s.Metadata.Name));
                         if (V1ServiceEx.ServiceEquals(currentCreated, s))
                             return;
                         string creationString = JsonConvert.SerializeObject(s);
@@ -680,12 +666,15 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     }
                 }
 
+                // pod annotations
+                var podAnnotations = new Dictionary<string, string>();
+                podAnnotations.Add(Constants.k8sEdgeOriginalModuleId, module.ModuleIdentity.ModuleId);
 
                 // Per container settings:
                 // exposed ports
                 Option<List<V1ContainerPort>> exposedPortsOption = (moduleWithDockerConfig.Config?.CreateOptions?.ExposedPorts != null) ?
                     this.GetExposedPorts(moduleWithDockerConfig.Config.CreateOptions.ExposedPorts).Map(servicePorts =>
-                       servicePorts.Select(tuple => new V1ContainerPort(tuple.Item1, protocol: tuple.Item2)).ToList()) :
+                       servicePorts.Select(tuple => new V1ContainerPort(tuple.Port, protocol: tuple.Protocol)).ToList()) :
                     Option.None<List<V1ContainerPort>>();
 
                 // privileged container
@@ -704,21 +693,21 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                 var containerList = new List<V1Container>()
                 {
-                    new V1Container(this.Getk8sNameFromModuleName(module.ModuleIdentity.ModuleId),
+                    new V1Container(GetK8sName(module.ModuleIdentity.ModuleId),
                         env: env,
                         image: moduleImage,
                         volumeMounts: volumeMountList,
                         securityContext: securityContext.GetOrElse(() => null),
-                        ports:exposedPortsOption.GetOrElse(() => null)
+                        ports: exposedPortsOption.GetOrElse(() => null)
                     ),
+
                     // TODO: Add Proxy container here - configmap for proxy configuration.
                     new V1Container("proxy",
-                        env:env, // TODO: check these for validity for proxy.
+                        env: env, // TODO: check these for validity for proxy.
                         image: this.proxyImage,
                         volumeMounts: proxyMounts)
                 };
 
-                //
                 Option<List<V1LocalObjectReference>> imageSecret = moduleWithDockerConfig.Config.AuthConfig.Map(
                     auth =>
                     {
@@ -729,9 +718,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                         };
                         return authList;
                     });
-                var modulePodSpec = new V1PodSpec(containerList, volumes: volumeList, imagePullSecrets: imageSecret.GetOrElse(() => null));
 
-                var objectMeta = new V1ObjectMeta(labels: podLabels);
+                var modulePodSpec = new V1PodSpec(containerList, volumes: volumeList, imagePullSecrets: imageSecret.GetOrElse(() => null));
+                var objectMeta = new V1ObjectMeta(labels: podLabels, annotations: podAnnotations);
                 return new V1PodTemplateSpec(metadata: objectMeta, spec: modulePodSpec);
             }
             else
@@ -914,7 +903,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         Option<V1ContainerStatus> GetContainerByName(string name, V1Pod pod)
         {
-            string containerName = this.Getk8sNameFromModuleName(name);
+            string containerName = GetK8sName(name);
             if (pod.Status?.ContainerStatuses != null)
             {
                 foreach (var status in pod.Status.ContainerStatuses)
@@ -951,13 +940,61 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         ModuleRuntimeInfo ConvertPodToRuntime(string name, V1Pod pod)
         {
+            string moduleName = name;
+            pod.Metadata.Annotations.TryGetValue(Constants.k8sEdgeOriginalModuleId, out moduleName);
+
             var containerStatus = this.GetContainerByName(name, pod);
             (var moduleStatus, var statusDescription) = this.ConvertPodStatusToModuleStatus(containerStatus);
             (var exitCode, var startTime, var exitTime, var imageHash) = this.GetRuntimedata(containerStatus.OrDefault());
+
             var reportedConfig = new AgentDocker.DockerReportedConfig(string.Empty, string.Empty, imageHash);
-            return new ModuleRuntimeInfo<AgentDocker.DockerReportedConfig>(name, "docker", moduleStatus, statusDescription, exitCode, startTime, exitTime, reportedConfig);
-            //return new ModuleRuntimeInfo(name, "docker", moduleStatus, pod.Status.Message, exitCode, startTime, exitTime);
+            return new ModuleRuntimeInfo<AgentDocker.DockerReportedConfig>(
+                ModuleIdentityHelper.GetModuleName(moduleName), "docker", moduleStatus, statusDescription, exitCode,
+                startTime, exitTime, reportedConfig);
         }
+
+        static string GetK8sName(string name)
+        {
+            // The name returned from here must conform to following rules (as per RFC 1035):
+            //  - length must be <= 63 characters
+            //  - must be all lower case alphanumeric characters or '-'
+            //  - must start with an alphabet
+            //  - must end with an alphanumeric character
+
+            name = name.ToLower();
+
+            // get index of first character from the left that is an alphabet
+            int start = 0;
+            while (start < name.Length && !IsAsciiLowercase(name[start]))
+            {
+                start++;
+            }
+
+            // get index of last character from right that's an alphanumeric
+            int end = Math.Max(start, name.Length - 1);
+            while (end > start && !IsAlphaNumeric(name[end]))
+            {
+                end--;
+            }
+
+            // build a new string from start-end (inclusive) excluding characters
+            // that aren't alphanumeric or the symbol '-'
+            var output = new StringBuilder();
+            for (int i = start, len = 0; i <= end && len < 63; i++)
+            {
+                if (IsAlphaNumeric(name[i]) || name[i] == '-')
+                {
+                    output.Append(name[i]);
+                    len++;
+                }
+            }
+
+            return output.ToString();
+        }
+
+        static bool IsAsciiLowercase(char ch) => LOWER_ASCII.IndexOf(ch) != -1;
+
+        static bool IsAlphaNumeric(char ch) => IsAsciiLowercase(ch) || Char.IsDigit(ch);
 
         static class Events
         {
