@@ -58,6 +58,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         readonly AsyncLock watchLock;
 
         const string LOWER_ASCII = "abcdefghijklmnopqrstuvwxyz";
+        const string ALLOWED_CHARS_LABEL_VALUES = "-._";
+        const string ALLOWED_CHARS_DNS = "-";
+        const string ALLOWED_CHARS_GENERIC = "-.";
+        const int MAX_K8S_VALUE_LENGTH = 253;
+        const int MAX_DNS_NAME_LENGTH = 63;
+        const int MAX_LABEL_VALUE_LENGTH = 63;
 
         public EdgeOperator(
             string iotHubHostname,
@@ -329,7 +335,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             if (portList.Count > 0)
             {
                 // Selector: by module name and device name, also how we will label this puppy.
-                var objectMeta = new V1ObjectMeta(labels: labels, name: GetK8sName(module.ModuleIdentity.ModuleId));
+                var objectMeta = new V1ObjectMeta(labels: labels, name: SanitizeDNSValue(module.ModuleIdentity.ModuleId));
                 // How we manage this service is dependent on the port mappings user asks for.
                 string serviceType;
                 if (onlyExposedPorts)
@@ -462,8 +468,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 }).ToList();
         }
 
-        string DeploymentName(string moduleId) => this.iotHubHostname + "-" + this.deviceId.ToLower() + "-"
-            + GetK8sName(moduleId);
+        string DeploymentName(string moduleId) => SanitizeK8sValue(this.iotHubHostname + "-" + this.deviceId + "-" + moduleId);
 
         async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
         {
@@ -480,9 +485,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     // Default labels
                     var labels = new Dictionary<string, string>
                     {
-                        [Constants.k8sEdgeModuleLabel] = GetK8sName(module.ModuleIdentity.ModuleId),
-                        [Constants.k8sEdgeDeviceLabel] = GetK8sName(this.deviceId),
-                        [Constants.k8sEdgeHubNameLabel] = GetK8sName(this.iotHubHostname)
+                        [Constants.k8sEdgeModuleLabel] = SanitizeLabelValue(module.ModuleIdentity.ModuleId),
+                        [Constants.k8sEdgeDeviceLabel] = SanitizeLabelValue(this.deviceId),
+                        [Constants.k8sEdgeHubNameLabel] = SanitizeLabelValue(this.iotHubHostname)
                     };
 
                     // Create a Service for every network interface of each module. (label them with hub, device and module id)
@@ -693,7 +698,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                 var containerList = new List<V1Container>()
                 {
-                    new V1Container(GetK8sName(module.ModuleIdentity.ModuleId),
+                    new V1Container(SanitizeDNSValue(module.ModuleIdentity.ModuleId),
                         env: env,
                         image: moduleImage,
                         volumeMounts: volumeMountList,
@@ -903,7 +908,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         Option<V1ContainerStatus> GetContainerByName(string name, V1Pod pod)
         {
-            string containerName = GetK8sName(name);
+            string containerName = SanitizeDNSValue(name);
             if (pod.Status?.ContainerStatuses != null)
             {
                 foreach (var status in pod.Status.ContainerStatuses)
@@ -953,7 +958,24 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 startTime, exitTime, reportedConfig);
         }
 
-        static string GetK8sName(string name)
+        static string SanitizeK8sValue(string name)
+        {
+            name = name.ToLower();
+
+            var output = new StringBuilder();
+            for (int i = 0, len = 0; i < name.Length && len < MAX_K8S_VALUE_LENGTH; i++)
+            {
+                if (IsAlphaNumeric(name[i]) || ALLOWED_CHARS_GENERIC.IndexOf(name[i]) != -1)
+                {
+                    output.Append(name[i]);
+                    len++;
+                }
+            }
+
+            return output.ToString();
+        }
+
+        static string SanitizeDNSValue(string name)
         {
             // The name returned from here must conform to following rules (as per RFC 1035):
             //  - length must be <= 63 characters
@@ -980,9 +1002,48 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             // build a new string from start-end (inclusive) excluding characters
             // that aren't alphanumeric or the symbol '-'
             var output = new StringBuilder();
-            for (int i = start, len = 0; i <= end && len < 63; i++)
+            for (int i = start, len = 0; i <= end && len < MAX_DNS_NAME_LENGTH; i++)
             {
-                if (IsAlphaNumeric(name[i]) || name[i] == '-')
+                if (IsAlphaNumeric(name[i]) || ALLOWED_CHARS_DNS.IndexOf(name[i]) != -1)
+                {
+                    output.Append(name[i]);
+                    len++;
+                }
+            }
+
+            return output.ToString();
+        }
+
+        static string SanitizeLabelValue(string name)
+        {
+            // The name returned from here must conform to following rules:
+            //  - length must be <= 63 characters
+            //  - must be all lower case alphanumeric characters or ['-','.','_']
+            //  - must start with an alphabet
+            //  - must end with an alphanumeric character
+
+            name = name.ToLower();
+
+            // get index of first character from the left that is an alphabet
+            int start = 0;
+            while (start < name.Length && !IsAlphaNumeric(name[start]))
+            {
+                start++;
+            }
+
+            // get index of last character from right that's an alphanumeric
+            int end = Math.Max(start, name.Length - 1);
+            while (end > start && !IsAlphaNumeric(name[end]))
+            {
+                end--;
+            }
+
+            // build a new string from start-end (inclusive) excluding characters
+            // that aren't alphanumeric or the symbol '-'
+            var output = new StringBuilder();
+            for (int i = start, len = 0; i <= end && len < MAX_LABEL_VALUE_LENGTH; i++)
+            {
+                if (IsAlphaNumeric(name[i]) || ALLOWED_CHARS_LABEL_VALUES.IndexOf(name[i]) != -1)
                 {
                     output.Append(name[i]);
                     len++;

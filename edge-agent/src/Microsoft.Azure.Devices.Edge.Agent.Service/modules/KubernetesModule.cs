@@ -20,7 +20,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Service.Modules
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.Devices.Edge.Agent.Docker;
     using Microsoft.Azure.Devices.Edge.Agent.Edgelet;
-    using ModuleIdentityLifecycleManager = Microsoft.Azure.Devices.Edge.Agent.Edgelet.ModuleIdentityLifecycleManager;
+    using ModuleIdentityLifecycleManager = Microsoft.Azure.Devices.Edge.Agent.Kubernetes.ModuleIdentityLifecycleManager;
     using Microsoft.Azure.Devices.Edge.Agent.Kubernetes.Planners;
     using Microsoft.Azure_Devices.Edge.Agent.Kubernetes;
     using Microsoft.Rest;

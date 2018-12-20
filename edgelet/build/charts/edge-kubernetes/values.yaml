@@ -6,7 +6,7 @@ iotedged:
     pullPolicy: Always
   service:
     name: iotedged
-    type: NodePort
+    type: ClusterIP
   apiVersion: '2018-06-28'
   # TCP ports on which iotedged should listen
   ports:
