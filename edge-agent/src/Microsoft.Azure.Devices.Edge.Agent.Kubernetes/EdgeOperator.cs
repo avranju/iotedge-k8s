@@ -174,11 +174,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
                             // kick off a new watch
                             this.client.ListClusterCustomObjectWithHttpMessagesAsync(
-                            Constants.k8sCrdGroup,
-                            Constants.k8sApiVersion,
-                            Constants.k8sCrdPlural,
-                            watch: true)
-                            .ContinueWith(ListCrdComplete);
+                                Constants.k8sCrdGroup,
+                                Constants.k8sApiVersion,
+                                Constants.k8sCrdPlural,
+                                watch: true).ContinueWith(ListCrdComplete);
                         },
                         onError: ex =>
                         {
@@ -946,7 +945,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         ModuleRuntimeInfo ConvertPodToRuntime(string name, V1Pod pod)
         {
             string moduleName = name;
-            pod.Metadata.Annotations.TryGetValue(Constants.k8sEdgeOriginalModuleId, out moduleName);
+            pod.Metadata?.Annotations?.TryGetValue(Constants.k8sEdgeOriginalModuleId, out moduleName);
 
             var containerStatus = this.GetContainerByName(name, pod);
             (var moduleStatus, var statusDescription) = this.ConvertPodStatusToModuleStatus(containerStatus);
