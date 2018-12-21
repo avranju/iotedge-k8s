@@ -57,6 +57,9 @@ all:
 release:
 	$(HOST_URI_OPTION) VERSION=${VERSION} $(CARGO) build $(CARGOFLAGS) --release
 
+release-kube:
+	$(HOST_URI_OPTION) VERSION=${VERSION} $(CARGO) build $(CARGOFLAGS) --no-default-features --features runtime-kubernetes --release
+
 $(TARGET)/$(PACKAGE).tar.gz:
 	@echo Running git archive...
 	@$(GIT) archive --prefix=$(PACKAGE)/ -o $(TARGET)/$(PACKAGE).tar $(VERSION) 2> /dev/null || (echo 'Warning: $(VERSION) does not exist.' && $(GIT) archive --prefix=$(PACKAGE)/ -o $(TARGET)/$(PACKAGE).tar HEAD)
