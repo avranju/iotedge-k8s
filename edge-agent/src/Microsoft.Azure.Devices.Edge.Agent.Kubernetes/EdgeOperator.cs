@@ -791,7 +791,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                     string[] bindSubstrings = bind.Split(':');
                     if (bindSubstrings.Count() >= 2)
                     {
-                        string name = bindSubstrings[0];
+                        string name = SanitizeDNSValue(bindSubstrings[0]);
                         string type = "DirectoryOrCreate";
                         string hostPath = bindSubstrings[0];
                         string mountPath = bindSubstrings[1];
@@ -808,12 +808,20 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 {
                     if (mount.Type.Equals("bind", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        string name = mount.Source;
+                        string name = SanitizeDNSValue(mount.Source);
                         string type = "DirectoryOrCreate";
                         string hostPath = mount.Source;
                         string mountPath = mount.Target;
                         bool readOnly = mount.ReadOnly;
                         volumeList.Add(new V1Volume(name, hostPath: new V1HostPathVolumeSource(hostPath, type)));
+                        volumeMountList.Add(new V1VolumeMount(mountPath, name, readOnlyProperty: readOnly));
+                    }
+                    else if (mount.Type.Equals("volume", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        string name = SanitizeDNSValue(mount.Source);
+                        string mountPath = mount.Target;
+                        bool readOnly = mount.ReadOnly;
+                        volumeList.Add(new V1Volume(name, emptyDir: new V1EmptyDirVolumeSource()));
                         volumeMountList.Add(new V1VolumeMount(mountPath, name, readOnlyProperty: readOnly));
                     }
                 }
