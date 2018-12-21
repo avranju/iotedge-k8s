@@ -36,7 +36,6 @@ rpmbuilddir?=$(HOME)/rpmbuild
 
 CARGOFLAGS=--manifest-path=$(srcdir)/Cargo.toml
 KUBE_CARGOFLAGS=--manifest-path=$(srcdir)/iotedged/Cargo.toml
-UPDATE_IDENTITY_HOOK_CARGOFLAGS=--manifest-path=$(srcdir)/update-identity-hook/Cargo.toml
 DPKGFLAGS=-b -rfakeroot -us -uc -i
 RPMBUILDFLAGS=-v -bb --clean
 
@@ -61,9 +60,6 @@ release:
 
 release-kube:
 	$(HOST_URI_OPTION) VERSION=${VERSION} $(CARGO) build $(KUBE_CARGOFLAGS) --no-default-features --features runtime-kubernetes --release
-
-update-identity-hook:
-	$(HOST_URI_OPTION) VERSION=${VERSION} $(CARGO) build $(UPDATE_IDENTITY_HOOK_CARGOFLAGS) --release
 
 $(TARGET)/$(PACKAGE).tar.gz:
 	@echo Running git archive...
