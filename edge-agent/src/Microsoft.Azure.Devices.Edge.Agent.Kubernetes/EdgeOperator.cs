@@ -5,7 +5,6 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using System.Security.Cryptography;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -14,7 +13,6 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
     using Microsoft.Azure.Devices.Edge.Agent.Core;
     using Microsoft.Azure.Devices.Edge.Agent.Core.Serde;
     using Microsoft.Azure.Devices.Edge.Agent.Kubernetes;
-    using Microsoft.Azure.Devices.Edge.Storage;
     using Microsoft.Azure.Devices.Edge.Util;
     using Microsoft.Azure.Devices.Edge.Util.Concurrency;
     using Microsoft.Rest;
@@ -130,11 +128,11 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
         public async Task<SystemInfo> GetSystemInfo()
         {
-            V1NodeList k8sNodes = await this.client.ListNodeAsync();
+            V1NodeList k8SNodes = await this.client.ListNodeAsync();
             string osType = string.Empty;
             string arch = string.Empty;
             string version = string.Empty;
-            var firstNode = k8sNodes.Items.FirstOrDefault();
+            V1Node firstNode = k8SNodes.Items.FirstOrDefault();
             if (firstNode != null)
             {
                 osType = firstNode.Status.NodeInfo.OperatingSystem;
@@ -226,7 +224,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                                 this.podWatch = Option.None<Watcher<V1Pod>>();
 
                                 // kick off a new watch
-                                this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(ListPodComplete);
+                                this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(this.ListPodComplete);
                             },
                             onError: ex =>
                             {
@@ -256,16 +254,16 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             // is an acceptable fate if these tasks fail.
 
             // Pod watching for module runtime status.
-            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(ListPodComplete);
+            this.client.ListNamespacedPodWithHttpMessagesAsync(Constants.k8sNamespace, watch: true).ContinueWith(this.ListPodComplete);
 
             // CRD watch
-            this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(ListCrdComplete);
+            this.client.ListClusterCustomObjectWithHttpMessagesAsync(Constants.k8sCrdGroup, Constants.k8sApiVersion, Constants.k8sCrdPlural, watch: true).ContinueWith(this.ListCrdComplete);
         }
 
         Option<List<(int Port, string Protocol)>> GetExposedPorts(IDictionary<string, DockerModels.EmptyStruct> exposedPorts)
         {
             var serviceList = new List<(int, string)>();
-            foreach (var exposedPort in exposedPorts)
+            foreach (KeyValuePair<string, DockerModels.EmptyStruct> exposedPort in exposedPorts)
             {
                 string[] portProtocol = exposedPort.Key.Split('/');
                 if (portProtocol.Length == 2)
@@ -302,7 +300,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 // Handle HostConfig PortBindings entries
                 if (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.PortBindings != null)
                 {
-                    foreach (var portBinding in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.PortBindings)
+                    foreach (KeyValuePair<string, IList<DockerModels.PortBinding>> portBinding in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.PortBindings)
                     {
                         string[] portProtocol = portBinding.Key.Split('/');
                         if (portProtocol.Length == 2)
@@ -312,7 +310,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                             if (int.TryParse(portProtocol[0], out port) && this.ValidateProtocol(portProtocol[1], out protocol))
                             {
                                 // k8s requires HostPort to be above 30000, and I am ignoring HostIP
-                                foreach (var hostBinding in portBinding.Value)
+                                foreach (DockerModels.PortBinding hostBinding in portBinding.Value)
                                 {
                                     int hostPort;
                                     if (int.TryParse(hostBinding.HostPort, out hostPort))
@@ -353,22 +351,22 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             }
         }
 
-        bool ValidateProtocol(string dockerProtocol, out string k8sProtocol)
+        bool ValidateProtocol(string dockerProtocol, out string k8SProtocol)
         {
             bool result = true;
             switch (dockerProtocol.ToUpper())
             {
                 case "TCP":
-                    k8sProtocol = "TCP";
+                    k8SProtocol = "TCP";
                     break;
                 case "UDP":
-                    k8sProtocol = "UDP";
+                    k8SProtocol = "UDP";
                     break;
                 case "SCTP":
-                    k8sProtocol = "SCTP";
+                    k8SProtocol = "SCTP";
                     break;
                 default:
-                    k8sProtocol = "TCP";
+                    k8SProtocol = "TCP";
                     result = false;
                     break;
             }
@@ -408,9 +406,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                             {
                                 // Delete the deployment.
                                 // Delete any services.
-                                var removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
+                                IEnumerable<Task<V1Status>> removeServiceTasks = currentServices.Items.Select(i => this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace));
                                 await Task.WhenAll(removeServiceTasks);
-                                var removeDeploymentTasks = currentDeployments.Items.Select(
+                                IEnumerable<Task<V1Status>> removeDeploymentTasks = currentDeployments.Items.Select(
                                     d => this.client.DeleteNamespacedDeployment1Async(
                                         new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground"));
                                 await Task.WhenAll(removeDeploymentTasks);
@@ -428,43 +426,73 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             }
         }
 
-        List<V1Service> GetCurrentServiceConfig(V1ServiceList currentServices)
+        Dictionary<string,string> GetCurrentServiceConfig(V1ServiceList currentServices)
         {
-            return currentServices.Items.Select(
+            return currentServices.Items.ToDictionary(
                 service =>
                 {
-                    try
+                    if (service?.Metadata?.Name != null)
                     {
-                        string creationString = service.Metadata.Annotations[Constants.CreationString];
-                        V1Service createdService = JsonConvert.DeserializeObject<V1Service>(creationString);
-                        return createdService;
+                        return service.Metadata.Name;
                     }
-                    catch (Exception ex) when (!ex.IsFatal())
+
+                    Events.InvalidCreationString("service", "null service");
+                    throw new NullReferenceException("null service in list");
+                },
+                service =>
+                {
+                    if (service != null)
                     {
-                        Events.InvalidCreationString(ex);
+                        if (service.Metadata?.Annotations != null)
+                        {
+                            if (service.Metadata.Annotations.TryGetValue(Constants.CreationString, out string creationString))
+                            {
+                                return creationString;
+                            }
+                        }
+                        Events.InvalidCreationString(service.Kind, service.Metadata?.Name);
+
+                        var serviceWithoutStatus = new V1Service(service.ApiVersion, service.Kind, service.Metadata, service.Spec);
+                        return JsonConvert.SerializeObject(serviceWithoutStatus);
                     }
-                    return service;
-                }).ToList();
+
+                    Events.InvalidCreationString("service", "null service");
+                    throw new NullReferenceException("null service in list");
+                });
         }
 
-        List<V1Deployment> GetCurrentDeploymentConfig(V1DeploymentList currentDeployments)
+        Dictionary<string, string> GetCurrentDeploymentConfig(V1DeploymentList currentDeployments)
         {
-            return currentDeployments.Items.Select(
+            return currentDeployments.Items.ToDictionary(
                 deployment =>
                 {
-                    try
+                    if (deployment?.Metadata?.Name != null)
                     {
-                        string creationString = deployment.Metadata.Annotations[Constants.CreationString];
-                        V1Deployment createdDeployment = JsonConvert.DeserializeObject<V1Deployment>(creationString);
-                        return createdDeployment;
-                    }
-                    catch (Exception ex) when (!ex.IsFatal())
-                    {
-                        Events.InvalidCreationString(ex);
+                        return deployment.Metadata.Name;
                     }
 
-                    return deployment;
-                }).ToList();
+                    Events.InvalidCreationString("deployment", "null deployment");
+                    throw new NullReferenceException("null deployment in list");
+                },
+                deployment =>
+                {
+                    if (deployment != null)
+                    {
+                        if (deployment.Metadata?.Annotations != null)
+                        {
+                            if (deployment.Metadata.Annotations.TryGetValue(Constants.CreationString, out string creationString))
+                            {
+                                return creationString;
+                            }
+                        }
+                        Events.InvalidCreationString(deployment.Kind, deployment.Metadata?.Name);
+                        var deploymentWithoutStatus = new V1Deployment(deployment.ApiVersion, deployment.Kind, deployment.Metadata, deployment.Spec);
+                        return JsonConvert.SerializeObject(deploymentWithoutStatus);
+                    }
+
+                    Events.InvalidCreationString("deployment", "null deployment");
+                    throw new NullReferenceException("null deployment in list");
+                });
         }
 
         string DeploymentName(string moduleId) => SanitizeK8sValue(this.iotHubHostname + "-" + this.deviceId + "-" + moduleId);
@@ -472,12 +500,12 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         async void ManageDeployments(V1ServiceList currentServices, V1DeploymentList currentDeployments, EdgeDeploymentDefinition customObject)
         {
             // Pull current configuration from annotations.
-            List<V1Service> currentV1ServicesFromAnnotations = this.GetCurrentServiceConfig(currentServices);
-            List<V1Deployment> currentDeploymentsFromAnnotations = this.GetCurrentDeploymentConfig(currentDeployments);
+            Dictionary<string, string> currentV1ServicesFromAnnotations = this.GetCurrentServiceConfig(currentServices);
+            Dictionary<string, string> currentDeploymentsFromAnnotations = this.GetCurrentDeploymentConfig(currentDeployments);
 
             var desiredServices = new List<V1Service>();
             var desiredDeployments = new List<V1Deployment>();
-            foreach (var module in customObject.Spec)
+            foreach (KubernetesModule module in customObject.Spec)
             {
                 if (string.Equals(module.Module.Type, "docker"))
                 {
@@ -533,16 +561,16 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             });
 
             var newServices = new List<V1Service>();
-            var currentServicesList = currentServices.Items.ToList();
             desiredServices.ForEach(
                 s =>
                 {
-                    if (currentServicesList.Exists(i => string.Equals(i.Metadata.Name, s.Metadata.Name)))
+                    if (currentV1ServicesFromAnnotations.ContainsKey(s.Metadata.Name))
                     {
-                        V1Service currentCreated = currentV1ServicesFromAnnotations.Find(i => string.Equals(i.Metadata.Name, s.Metadata.Name));
-                        if (V1ServiceEx.ServiceEquals(currentCreated, s))
-                            return;
+                        string serviceAnnotation = currentV1ServicesFromAnnotations[s.Metadata.Name];
                         string creationString = JsonConvert.SerializeObject(s);
+                        // If configuration matches, no need to update service
+                        if (string.Equals(serviceAnnotation, creationString))
+                            return;
                         if (s.Metadata.Annotations == null)
                         {
                             var annotations = new Dictionary<string, string>
@@ -574,22 +602,24 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 });
             var deploymentsUpdated = new List<V1Deployment>();
             var newDeployments = new List<V1Deployment>();
-            var currentDeploymentsList = currentDeployments.Items.ToList();
+            List<V1Deployment> currentDeploymentsList = currentDeployments.Items.ToList();
             desiredDeployments.ForEach(
                 d =>
                 {
-                    if (currentDeploymentsList.Exists(i => string.Equals(i.Metadata.Name, d.Metadata.Name)))
+                    if (currentDeploymentsFromAnnotations.ContainsKey(d.Metadata.Name))
                     {
                         V1Deployment current = currentDeploymentsList.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
-                        V1Deployment currentFromAnnotation = currentDeploymentsFromAnnotations.Find(i => string.Equals(i.Metadata.Name, d.Metadata.Name));
+                        string currentFromAnnotation = currentDeploymentsFromAnnotations[d.Metadata.Name];
+                        string creationString = JsonConvert.SerializeObject(d);
 
-                        if (V1DeploymentEx.DeploymentEquals(currentFromAnnotation, d) ||
-                            (string.Equals(d.Metadata.Name, DeploymentName(CoreConstants.EdgeAgentModuleName)) && V1DeploymentEx.ImageEquals(current, d)))
+                        // If configuration matches, or this is edgeAgent deployment and the images match,
+                        // no need to do update deployment
+                        if (string.Equals(currentFromAnnotation,creationString) ||
+                            (string.Equals(d.Metadata.Name, this.DeploymentName(CoreConstants.EdgeAgentModuleName)) && V1DeploymentEx.ImageEquals(current, d)))
                         {
                             return;
                         }
 
-                        string creationString = JsonConvert.SerializeObject(d);
                         d.Metadata.ResourceVersion = current.Metadata.ResourceVersion;
                         if (d.Metadata.Annotations == null)
                         {
@@ -620,14 +650,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 });
 
             // Remove the old
-            var removeServiceTasks = servicesRemoved.Select(i =>
+            IEnumerable<Task<V1Status>> removeServiceTasks = servicesRemoved.Select(i =>
             {
                 Events.DeletingService(i);
                 return this.client.DeleteNamespacedServiceAsync(new V1DeleteOptions(), i.Metadata.Name, Constants.k8sNamespace);
             });
             await Task.WhenAll(removeServiceTasks);
 
-            var removeDeploymentTasks = deploymentsRemoved.Select(d =>
+            IEnumerable<Task<V1Status>> removeDeploymentTasks = deploymentsRemoved.Select(d =>
             {
                 Events.DeletingDeployment(d);
                 return this.client.DeleteNamespacedDeployment1Async(new V1DeleteOptions(propagationPolicy: "Foreground"), d.Metadata.Name, Constants.k8sNamespace, propagationPolicy: "Foreground");
@@ -635,14 +665,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             await Task.WhenAll(removeDeploymentTasks);
 
             // Create the new.
-            var createServiceTasks = newServices.Select(s =>
+            IEnumerable<Task<V1Service>> createServiceTasks = newServices.Select(s =>
             {
                 Events.CreatingService(s);
                 return this.client.CreateNamespacedServiceAsync(s, Constants.k8sNamespace);
             });
             await Task.WhenAll(createServiceTasks);
 
-            var createDeploymentTasks = newDeployments.Select(deployment =>
+            IEnumerable<Task<V1Deployment>> createDeploymentTasks = newDeployments.Select(deployment =>
             {
                 Events.CreatingDeployment(deployment);
                 return this.client.CreateNamespacedDeploymentAsync(deployment, Constants.k8sNamespace);
@@ -652,7 +682,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             // Update the existing - should only do this when different.
             //var updateServiceTasks = servicesUpdated.Select( s => this.client.ReplaceNamespacedServiceAsync(s, s.Metadata.Name, Constants.k8sNamespace));
             //await Task.WhenAll(updateServiceTasks);
-            var updateDeploymentTasks = deploymentsUpdated.Select(deployment => this.client.ReplaceNamespacedDeploymentAsync(deployment, deployment.Metadata.Name, Constants.k8sNamespace));
+            IEnumerable<Task<V1Deployment>> updateDeploymentTasks = deploymentsUpdated.Select(deployment => this.client.ReplaceNamespacedDeploymentAsync(deployment, deployment.Metadata.Name, Constants.k8sNamespace));
             await Task.WhenAll(updateDeploymentTasks);
         }
 
@@ -664,7 +694,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 var podLabels = new Dictionary<string, string>(labels);
                 if (moduleWithDockerConfig.Config.CreateOptions?.Labels != null)
                 {
-                    foreach (var label in moduleWithDockerConfig.Config.CreateOptions?.Labels)
+                    foreach (KeyValuePair<string, string> label in moduleWithDockerConfig.Config.CreateOptions?.Labels)
                     {
                         podLabels.Add(label.Key, label.Value);
                     }
@@ -690,7 +720,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 List<V1EnvVar> env = this.CollectEnv(moduleWithDockerConfig, module.ModuleIdentity);
 
                 // Bind mounts
-                (List<V1Volume> volumeList, List<V1VolumeMount> proxyMounts, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig, module.ModuleIdentity).GetOrElse((null, null, null));
+                (List<V1Volume> volumeList, List<V1VolumeMount> proxyMounts, List<V1VolumeMount> volumeMountList) = this.GetVolumesFromModule(moduleWithDockerConfig).GetOrElse((null, null, null));
 
                 //Image
                 string moduleImage = moduleWithDockerConfig.Config.Image;
@@ -734,7 +764,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             return new V1PodTemplateSpec();
         }
 
-        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig, KubernetesModuleIdentity identity)
+        VolumeOptions GetVolumesFromModule(IModule<AgentDocker.CombinedDockerConfig> moduleWithDockerConfig)
         {
             var v1ConfigMapVolumeSource = new V1ConfigMapVolumeSource(null, null, this.proxyConfigVolumeName, null);
 
@@ -756,7 +786,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             if (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds != null)
             {
-                foreach (var bind in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds)
+                foreach (string bind in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Binds)
                 {
                     string[] bindSubstrings = bind.Split(':');
                     if (bindSubstrings.Count() >= 2)
@@ -774,7 +804,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             if (moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts != null)
             {
-                foreach (var mount in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts)
+                foreach (DockerModels.Mount mount in moduleWithDockerConfig.Config?.CreateOptions?.HostConfig?.Mounts)
                 {
                     if (mount.Type.Equals("bind", StringComparison.InvariantCultureIgnoreCase))
                     {
@@ -798,14 +828,14 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
         {
             char[] envSplit = { '=' };
             var envList = new List<V1EnvVar>();
-            foreach (var item in moduleWithDockerConfig.Env)
+            foreach (KeyValuePair<string, EnvVal> item in moduleWithDockerConfig.Env)
             {
                 envList.Add(new V1EnvVar(item.Key, item.Value.Value));
             }
 
             if (moduleWithDockerConfig.Config?.CreateOptions?.Env != null)
             {
-                foreach (var hostEnv in moduleWithDockerConfig.Config?.CreateOptions?.Env)
+                foreach (string hostEnv in moduleWithDockerConfig.Config?.CreateOptions?.Env)
                 {
                     string[] keyValue = hostEnv.Split(envSplit, 2);
                     if (keyValue.Count() == 2)
@@ -842,7 +872,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             }
             else
             {
-                envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeOperator.EdgeHubHostname));
+                envList.Add(new V1EnvVar(CoreConstants.GatewayHostnameVariableName, EdgeHubHostname));
             }
             return envList;
         }
@@ -862,20 +892,19 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 case WatchEventType.Added:
                 case WatchEventType.Modified:
                 case WatchEventType.Error:
-                    var runtimeInfo = this.ConvertPodToRuntime(podName, item);
+                    ModuleRuntimeInfo runtimeInfo = this.ConvertPodToRuntime(podName, item);
                     using (await this.moduleLock.LockAsync())
                     {
                         this.moduleRuntimeInfos[podName] = runtimeInfo;
                     }
                     break;
                 case WatchEventType.Deleted:
-                    Option<ModuleRuntimeInfo> removedModuleInfo = Option.None<ModuleRuntimeInfo>();
                     using (await this.moduleLock.LockAsync())
                     {
                         ModuleRuntimeInfo removedRuntimeInfo;
-                        if (this.moduleRuntimeInfos.TryRemove(podName, out removedRuntimeInfo))
+                        if (! this.moduleRuntimeInfos.TryRemove(podName, out removedRuntimeInfo))
                         {
-                            removedModuleInfo = Option.Some(removedRuntimeInfo);
+                            Events.PodStatusRemoveError(podName);
                         }
                     }
                     break;
@@ -947,9 +976,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             string moduleName = name;
             pod.Metadata?.Annotations?.TryGetValue(Constants.k8sEdgeOriginalModuleId, out moduleName);
 
-            var containerStatus = this.GetContainerByName(name, pod);
-            (var moduleStatus, var statusDescription) = this.ConvertPodStatusToModuleStatus(containerStatus);
-            (var exitCode, var startTime, var exitTime, var imageHash) = this.GetRuntimedata(containerStatus.OrDefault());
+            Option<V1ContainerStatus> containerStatus = this.GetContainerByName(name, pod);
+            (ModuleStatus moduleStatus, string statusDescription) = this.ConvertPodStatusToModuleStatus(containerStatus);
+            (int exitCode, Option<DateTime> startTime, Option<DateTime> exitTime, string imageHash) = this.GetRuntimedata(containerStatus.OrDefault());
 
             var reportedConfig = new AgentDocker.DockerReportedConfig(string.Empty, string.Empty, imageHash);
             return new ModuleRuntimeInfo<AgentDocker.DockerReportedConfig>(
@@ -1074,7 +1103,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
                 DeploymentError,
                 DeploymentNameMismatch,
                 PodStatus,
-                RemoveService,
+                PodStatusRemoveError,
                 UpdateService,
                 CreateService,
                 RemoveDeployment,
@@ -1123,9 +1152,9 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 Log.LogError((int)EventIds.ExceptionInCustomResourceWatch, ex, "Exception caught in Custom Resource Watch task.");
             }
-            public static void InvalidCreationString(Exception ex)
+            public static void InvalidCreationString(string kind, string name)
             {
-                Log.LogWarning((int)EventIds.InvalidCreationString, ex, "Expected a valid creation string in k8s Object.");
+                Log.LogDebug((int)EventIds.InvalidCreationString, $"Expected a valid '{kind}' creation string in k8s Object '{name}'.");
             }
 
             public static void ExposedPortValue(string portEntry)
@@ -1143,7 +1172,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             }
             public static void DeploymentStatus(WatchEventType type, string name)
             {
-                Log.LogDebug((int)EventIds.DeploymentStatus, $"Pod '{name}', status'{type}'");
+                Log.LogDebug((int)EventIds.DeploymentStatus, $"Deployment '{name}', status'{type}'");
             }
 
             public static void DeploymentError()
@@ -1160,9 +1189,10 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
             {
                 Log.LogDebug((int)EventIds.PodStatus, $"Pod '{podname}', status'{type}'");
             }
-            public static void RemoveService(string name)
+
+            public static void PodStatusRemoveError(string podname)
             {
-                Log.LogDebug((int)EventIds.RemoveService, $"Removing service '{name}'");
+                Log.LogWarning((int)EventIds.PodStatusRemoveError, $"Notified of pod {podname} deleted, but not removed from our pod list");
             }
 
             public static void UpdateService(string name)
