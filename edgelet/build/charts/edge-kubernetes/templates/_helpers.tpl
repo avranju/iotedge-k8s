@@ -57,7 +57,7 @@ connect:
 listen:
   management_uri: "http://0.0.0.0:{{ .Values.iotedged.ports.management }}"
   workload_uri: "http://0.0.0.0:{{ .Values.iotedged.ports.workload }}"
-homedir: "/var/lib/iotedge"
+homedir: {{ .Values.iotedged.data.targetPath | quote }}
 moby_runtime:
   uri: "unix:///var/run/docker.sock"
   network: "azure-iot-edge"

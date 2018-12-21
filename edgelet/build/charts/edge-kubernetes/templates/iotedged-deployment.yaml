@@ -31,7 +31,7 @@ spec:
             mountPath: "/etc/iotedged"
             readOnly: true
           - name: edge-home
-            mountPath: "/var/lib/iotedge"
+            mountPath: {{ .Values.iotedged.data.targetPath | quote }}
           ports:
             - name: management
               containerPort: {{ .Values.iotedged.ports.management }}
@@ -62,4 +62,10 @@ spec:
         volume should probably be populated with proper CA certs.
       */}}
       - name: edge-home
+        {{- if .Values.iotedged.data.persistentVolumeClaim }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.iotedged.data.persistentVolumeClaim.claimName }}
+          readOnly: false
+        {{ else }}
         emptyDir: {}
+        {{ end -}}
