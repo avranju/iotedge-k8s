@@ -42,6 +42,6 @@ rustup target add armv7-unknown-linux-gnueabihf
 rustup component add rust-src
 
 mkdir -p "$BUILD_DIR"
-COMMAND="cd /project/edgelet && make release-kube KUBE_CARGOFLAGS=\"--manifest-path ./iotedged/Cargo.toml --target armv7-unknown-linux-gnueabihf\" TARGET=target/armv7-unknown-linux-gnueabihf/release"
+COMMAND="cd /project/edgelet && make update-identity-hook UPDATE_IDENTITY_HOOK_CARGOFLAGS=\"--manifest-path ./update-identity-hook/Cargo.toml --target armv7-unknown-linux-gnueabihf\" TARGET=target/armv7-unknown-linux-gnueabihf/release"
 
 run_command "$COMMAND"
