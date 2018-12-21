@@ -1,8 +1,8 @@
 # iotedged configuration
 iotedged:
   image:
-    repository: edgebuilds.azurecr.io/microsoft/azureiotedge-iotedged
-    tag: 1.0.6-linux-amd64
+    repository: azureiotedge/iotedged
+    tag: 1.0-beta-linux
     pullPolicy: Always
   service:
     name: iotedged
@@ -34,14 +34,14 @@ iotedgedProxy:
 edgeAgent:
   containerName: edgeagent
   image:
-    repository: edgebuilds.azurecr.io/microsoft/azureiotedge-agent
-    tag: 19145536-linux-amd64
+    repository: azureiotedge/agent
+    tag: 1.0-beta-linux
     pullPolicy: Always
   # Optional registry credentials for pulling edge agent image
-  registryCredentials:
-    username: edgebuilds
-    password: '<PASSWORD HERE>'
-    serveraddress: 'edgebuilds.azurecr.io'
+  # registryCredentials:
+  #   username: '<USERNAME>'
+  #   password: '<PASSWORD>'
+  #   serveraddress: '<SERVER ADDRESS>'
   env:
     # This should typically be the name by which the loadbalancer that's sitting
     # in front of the cluster is known by. Edge Hub for example will use this name
@@ -52,15 +52,15 @@ edgeAgent:
     networkId: 'azure-iot-edge'
     authScheme: 'sasToken'
     # Set this to false if you want to turn off verbose k8s call tracing
-    enableK8sServiceCallTracing: 'true'
+    enableK8sServiceCallTracing: 'false'
     # Configure edge agent log verbosity
     runtimeLogLevel: 'debug'
 
-# Registry credentials for module images
-registryCredentials:
-  edgebuilds.azurecr.io:
-    username: edgebuilds
-    password: '<PASSWORD HERE>'
+# Optional registry credentials for module images
+# registryCredentials:
+#   <SERVER ADDRESS>:
+#     username: '<USERNAME>'
+#     password: '<PASSWORD>'
 
 # Azure IoT Hub device connection string
 deviceConnectionString: '<ADD DEVICE CONNECTION STRING HERE>'
@@ -73,6 +73,6 @@ deployDebugContainer: false
 
 updateIdentityHook:
   image:
-    repository: edgebuilds.azurecr.io/microsoft/update-identity-hook
-    tag: 1.0.5-linux-amd64
+    repository: azureiotedge/update-identity-hook
+    tag: 1.0-beta-linux
     pullPolicy: Always
