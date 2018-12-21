@@ -51,7 +51,7 @@ spec:
       {{- if .Values.registryCredentials }}
       imagePullSecrets:
         - name: {{ include "edge-kubernetes.fullname" . }}-regcreds
-      {{ end -}}
+      {{ end }}
       volumes:
       - name: config
         secret:
