@@ -2,7 +2,7 @@
 iotedged:
   image:
     repository: azureiotedge/iotedged
-    tag: 1.0-beta-linux
+    tag: 0.1.0-alpha
     pullPolicy: Always
   service:
     name: iotedged
@@ -34,8 +34,8 @@ iotedgedProxy:
 edgeAgent:
   containerName: edgeagent
   image:
-    repository: azureiotedge/agent
-    tag: 1.0-beta-linux
+    repository: azureiotedge/azureiotedge-agent
+    tag: 0.1.0-alpha
     pullPolicy: Always
   # Optional registry credentials for pulling edge agent image
   # registryCredentials:
@@ -74,5 +74,5 @@ deployDebugContainer: false
 updateIdentityHook:
   image:
     repository: azureiotedge/update-identity-hook
-    tag: 1.0-beta-linux
+    tag: 0.1.0-alpha
     pullPolicy: Always
