@@ -64,7 +64,7 @@ spec:
       - name: edge-home
         {{- if .Values.iotedged.data.persistentVolumeClaim }}
         persistentVolumeClaim:
-          claimName: {{ .Values.iotedged.data.persistentVolumeClaim.claimName }}
+          claimName: {{ .Values.iotedged.data.persistentVolumeClaim.name }}
           readOnly: false
         {{ else }}
         emptyDir: {}

@@ -22,7 +22,8 @@ iotedged:
     # to the pod's lifetime.
     #
     # persistentVolumeClaim:
-    #   claimName: <CLAIM NAME HERE>
+    #   name: <CLAIM NAME HERE>
+    #   storageClassName: <STORAGE CLASS NAME HERE>
 
 iotedgedProxy:
   image:
@@ -52,7 +53,7 @@ edgeAgent:
     networkId: 'azure-iot-edge'
     authScheme: 'sasToken'
     # Set this to false if you want to turn off verbose k8s call tracing
-    enableK8sServiceCallTracing: 'false'
+    enableK8sServiceCallTracing: false
     # Configure edge agent log verbosity
     runtimeLogLevel: 'debug'
 
