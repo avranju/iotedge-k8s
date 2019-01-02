@@ -990,7 +990,7 @@ namespace Microsoft.Azure_Devices.Edge.Agent.Kubernetes
 
             var reportedConfig = new AgentDocker.DockerReportedConfig(string.Empty, string.Empty, imageHash);
             return new ModuleRuntimeInfo<AgentDocker.DockerReportedConfig>(
-                ModuleIdentityHelper.GetModuleName(moduleName), "docker", moduleStatus, statusDescription, exitCode,
+                ModuleIdentityHelper.GetModuleIdentityName(moduleName), "docker", moduleStatus, statusDescription, exitCode,
                 startTime, exitTime, reportedConfig);
         }
 
