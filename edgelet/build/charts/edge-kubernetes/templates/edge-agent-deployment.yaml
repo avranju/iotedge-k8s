@@ -10,8 +10,6 @@ metadata:
     app.kubernetes.io/managed-by: {{ .Release.Service }}
     net.azure-devices.edge.deviceid: {{ include "edge-kubernetes.deviceid" . | quote }}
     net.azure-devices.edge.hub: {{ include "edge-kubernetes.hostname" . | quote }}
-  annotations:
-    net.azure-devices.edge.original-moduleid: '$edgeAgent'
 spec:
   replicas: 1
   selector:
