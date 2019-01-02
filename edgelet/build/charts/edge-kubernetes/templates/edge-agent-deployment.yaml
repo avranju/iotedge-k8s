@@ -25,6 +25,8 @@ spec:
         net.azure-devices.edge.module: "edgeagent"
         net.azure-devices.edge.deviceid: {{ include "edge-kubernetes.deviceid" . | quote }}
         net.azure-devices.edge.hub: {{ include "edge-kubernetes.hostname" . | quote }}
+      annotations:
+        net.azure-devices.edge.original-moduleid: '$edgeAgent'
     spec:
       serviceAccountName: "{{.Release.Name}}-service-account"
       containers:
