@@ -15,7 +15,7 @@ serde_yaml = "0.8"
 tokio = "0.1.8"
 url = "1.7"
 
-edgelet-core = { path = "../edgelet-core" }
+edgelet-core = { path = "../edgelet-core", features = ["runtime-kubernetes"] }
 edgelet-http = { path = "../edgelet-http" }
 edgelet-iothub = { path = "../edgelet-iothub" }
 iothubservice = { path = "../iothubservice" }
