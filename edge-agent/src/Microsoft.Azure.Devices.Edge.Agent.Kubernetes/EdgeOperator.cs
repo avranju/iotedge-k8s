@@ -289,7 +289,7 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
                     var annotations = new Dictionary<string, string>();
                     foreach (KeyValuePair<string, string> label in moduleWithDockerConfig.Config.CreateOptions?.Labels)
                     {
-                        annotations.Add(label.Key, label.Value);
+                        annotations.Add(KubeUtils.SanitizeAnnotationKey(label.Key), label.Value);
                     }
 
                     serviceAnnotations = Option.Some(annotations);
@@ -729,7 +729,8 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
                 {
                     foreach (KeyValuePair<string, string> label in moduleWithDockerConfig.Config.CreateOptions?.Labels)
                     {
-                        podAnnotations.Add(label.Key, label.Value);
+                        Console.WriteLine($"Annotation: {KubeUtils.SanitizeAnnotationKey(label.Key)}, {label.Value}");
+                        podAnnotations.Add(KubeUtils.SanitizeAnnotationKey(label.Key), label.Value);
                     }
                 }
 
