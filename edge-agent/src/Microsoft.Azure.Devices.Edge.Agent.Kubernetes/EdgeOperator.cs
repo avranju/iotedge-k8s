@@ -729,7 +729,6 @@ namespace Microsoft.Azure.Devices.Edge.Agent.Kubernetes
                 {
                     foreach (KeyValuePair<string, string> label in moduleWithDockerConfig.Config.CreateOptions?.Labels)
                     {
-                        Console.WriteLine($"Annotation: {KubeUtils.SanitizeAnnotationKey(label.Key)}, {label.Value}");
                         podAnnotations.Add(KubeUtils.SanitizeAnnotationKey(label.Key), label.Value);
                     }
                 }
